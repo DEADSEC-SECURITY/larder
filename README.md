@@ -108,4 +108,4 @@ More detailed behavior is recorded in the `docs` directory. These documents cove
 
 Bug reports and focused pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Security issues should be reported using the process in [SECURITY.md](SECURITY.md).
 
-Larder is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
+Larder is source available under the PolyForm Noncommercial License 1.0.0. Noncommercial use, modification, and redistribution are permitted when the license and required attribution are retained. Commercial or business use requires separate written permission from the copyright holder. See [LICENSING.md](LICENSING.md) and [LICENSE](LICENSE).

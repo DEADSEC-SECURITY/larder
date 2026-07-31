@@ -37,4 +37,4 @@ Keep each pull request focused on one change. Include tests when behavior change
 
 Do not include credentials, private hostnames, personal data, database dumps, or environment files. Use the example domains and development values already present in the repository.
 
-By submitting a contribution, you agree that it may be distributed under the Apache License 2.0.
+By submitting a contribution, you agree that it may be distributed under the PolyForm Noncommercial License 1.0.0.
