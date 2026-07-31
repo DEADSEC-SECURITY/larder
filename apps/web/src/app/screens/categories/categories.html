@@ -1,0 +1,100 @@
+<div class="stack">
+  <span class="page-title">Categories &amp; rules</span>
+
+  <div class="callout">
+    Each category carries a <b>product kind</b> plus optional defaults: a <b>shelf life</b>
+    for expiration estimates and a <b>storage location</b> for new units. When a unit has no
+    printed date, its expiration is estimated from the nearest rule — a subcategory rule
+    wins; otherwise it inherits the parent’s. “No expiration default” is a valid state.
+  </div>
+
+  <div class="hstack wrap" style="gap: 8px">
+    <input
+      class="input"
+      style="flex: 1; min-width: 200px"
+      placeholder="New category name…"
+      [ngModel]="newName()"
+      (ngModelChange)="newName.set($event)"
+      (keyup.enter)="add()"
+    />
+    <select class="select" [ngModel]="newKind()" (ngModelChange)="newKind.set($event)">
+      @for (k of kinds; track k.upper) {
+        <option [value]="k.upper">{{ k.label }}</option>
+      }
+    </select>
+    <button type="button" class="btn btn-primary" (click)="add()">Add</button>
+  </div>
+
+  @if (presentKinds().length > 1) {
+    <div class="hstack wrap" style="gap: 6px">
+      <button
+        type="button"
+        class="chip chip-sm"
+        [class.active]="kindFilter() === 'all'"
+        (click)="kindFilter.set('all')"
+      >
+        All kinds
+      </button>
+      @for (k of presentKinds(); track k.kind) {
+        <button
+          type="button"
+          class="chip chip-sm"
+          [class.active]="kindFilter() === k.kind"
+          (click)="kindFilter.set(k.kind)"
+        >
+          {{ k.label }}
+        </button>
+      }
+    </div>
+  }
+
+  <div class="card" style="padding: 8px var(--pad)">
+    @for (category of tree(); track category.id) {
+      <div class="cat-block row-line">
+        <div class="cat-row">
+          <span class="cat-name">{{ category.name }}</span>
+          @if (kindBadge(category)) {
+            <span class="pill pill-sm pill-chip">{{ kindBadge(category) }}</span>
+          }
+          <span class="faint" style="font-size: 11.5px">{{ category.productCount }} products</span>
+          <button
+            type="button"
+            class="rule-chip pill"
+            [class.pill-ok]="ruleChip(category).own"
+            [class.pill-chip]="!ruleChip(category).own"
+            (click)="editing.set(category)"
+          >
+            {{ ruleChip(category).label }} ✎
+          </button>
+        </div>
+        @for (sub of category.children; track sub.id) {
+          <div class="sub-row">
+            <span style="font-size: 13.5px">{{ sub.name }}</span>
+            @if (kindBadge(sub)) {
+              <span class="pill pill-sm pill-chip">{{ kindBadge(sub) }}</span>
+            }
+            <span class="spacer"></span>
+            <span class="faint" style="font-size: 11.5px">{{ sub.productCount }} products</span>
+            <button
+              type="button"
+              class="rule-chip pill"
+              [class.pill-ok]="ruleChip(sub).own"
+              [class.pill-chip]="!ruleChip(sub).own"
+              (click)="editing.set(sub)"
+            >
+              {{ ruleChip(sub).label }} ✎
+            </button>
+          </div>
+        }
+      </div>
+    } @empty {
+      <div class="faint" style="padding: 24px; text-align: center; font-size: 13px">
+        No categories yet — add one above.
+      </div>
+    }
+  </div>
+</div>
+
+@if (editing(); as category) {
+  <app-edit-rule [category]="category" (closed)="editing.set(null)" (saved)="load()" />
+}

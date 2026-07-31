@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: larder
+      POSTGRES_USER: larder
+      POSTGRES_PASSWORD: ${LARDER_POSTGRES_PASSWORD:-larder-development-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U larder -d larder"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "127.0.0.1:${LARDER_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - larder-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    environment: &larder-environment
+      LARDER_DATABASE_URL: postgresql+asyncpg://larder:${LARDER_POSTGRES_PASSWORD:-larder-development-only}@postgres:5432/larder
+      LARDER_HOUSEHOLD_TIMEZONE: ${LARDER_HOUSEHOLD_TIMEZONE:-UTC}
+      LARDER_OFF_USER_AGENT: ${LARDER_OFF_USER_AGENT:-Larder/0.1 (household@example.invalid)}
+      LARDER_SCAN_API_TOKEN: ${LARDER_SCAN_API_TOKEN:-larder-development-only}
+      LARDER_UPCITEMDB_ENABLED: ${LARDER_UPCITEMDB_ENABLED:-true}
+      LARDER_UPCITEMDB_BASE_URL: ${LARDER_UPCITEMDB_BASE_URL:-https://api.upcitemdb.com/prod/trial}
+      LARDER_UPCITEMDB_USER_KEY: ${LARDER_UPCITEMDB_USER_KEY:-}
+      LARDER_UPCITEMDB_KEY_TYPE: ${LARDER_UPCITEMDB_KEY_TYPE:-3scale}
+      LARDER_CURRENCY_CODE: ${LARDER_CURRENCY_CODE:-USD}
+      LARDER_ZIPTAX_API_KEY: ${LARDER_ZIPTAX_API_KEY:-}
+      LARDER_WEB_CORS_ORIGINS: ${LARDER_WEB_CORS_ORIGINS:-http://localhost:4200}
+      LARDER_OIDC_ENABLED: ${LARDER_OIDC_ENABLED:-false}
+      LARDER_OIDC_ISSUER: ${LARDER_OIDC_ISSUER:-}
+      LARDER_OIDC_CLIENT_ID: ${LARDER_OIDC_CLIENT_ID:-}
+      LARDER_OIDC_CLIENT_SECRET: ${LARDER_OIDC_CLIENT_SECRET:-}
+      LARDER_OIDC_SCOPES: ${LARDER_OIDC_SCOPES:-openid profile email offline_access}
+      LARDER_OIDC_ALLOWED_GROUPS: ${LARDER_OIDC_ALLOWED_GROUPS:-}
+      LARDER_PUBLIC_BASE_URL: ${LARDER_PUBLIC_BASE_URL:-}
+      LARDER_SESSION_SECRET: ${LARDER_SESSION_SECRET:-}
+      LARDER_SESSION_TTL_SECONDS: ${LARDER_SESSION_TTL_SECONDS:-31536000}
+      LARDER_SESSION_REVALIDATE_SECONDS: ${LARDER_SESSION_REVALIDATE_SECONDS:-86400}
+      LARDER_SESSION_COOKIE_SECURE: ${LARDER_SESSION_COOKIE_SECURE:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  daemon:
+    build: .
+    environment:
+      <<: *larder-environment
+      LARDER_LOG_LEVEL: ${LARDER_LOG_LEVEL:-INFO}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "larder", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  api:
+    build: .
+    command: ["api"]
+    environment:
+      <<: *larder-environment
+      LARDER_LOG_LEVEL: ${LARDER_LOG_LEVEL:-INFO}
+      LARDER_API_HOST: 0.0.0.0
+      LARDER_API_PORT: 8080
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "127.0.0.1:${LARDER_API_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "127.0.0.1:${LARDER_WEB_PORT:-8081}:80"
+    restart: unless-stopped
+
+volumes:
+  larder-postgres:

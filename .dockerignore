@@ -1,0 +1,12 @@
+.git
+.venv
+.venv-win
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+tests
+node_modules
+apps/web/node_modules
+apps/web/dist
+.angular

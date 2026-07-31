@@ -1,0 +1,66 @@
+<div class="stack">
+  <div class="hstack wrap" style="align-items: baseline; gap: 12px">
+    <span class="page-title">Stores</span>
+    <div class="spacer">
+      <button type="button" class="btn btn-primary" (click)="adding.set(!adding())">
+        + Add store
+      </button>
+    </div>
+  </div>
+
+  @if (adding()) {
+    <div class="hstack" style="gap: 8px">
+      <input
+        class="input"
+        style="flex: 1"
+        placeholder="Store name…"
+        [value]="newName()"
+        (input)="newName.set($any($event.target).value)"
+        (keyup.enter)="add()"
+      />
+      <button type="button" class="btn btn-primary" (click)="add()">Add</button>
+    </div>
+  }
+
+  <div class="callout">
+    Prices are recorded per store, so the shopping list can recommend where each item is
+    cheapest. Pairing a <b>control barcode</b> lets a scanner switch its active store
+    hands-free — scan the card, then scan groceries.
+  </div>
+
+  <div class="store-grid">
+    @for (store of stores(); track store.id) {
+      <div class="card stack" style="gap: 12px">
+        <div class="hstack">
+          <span style="font-size: 17px; font-weight: 700; flex: 1">{{ store.name }}</span>
+          <ui-toggle [on]="store.active" (toggled)="toggleActive(store, $event)" />
+        </div>
+        <div class="hstack wrap sub" style="gap: 14px; font-size: 12.5px">
+          <span><b class="ink">{{ store.productCount }}</b> products</span>
+          <span><b class="ink">{{ store.recordCount }}</b> price records</span>
+          <span>last shop <b class="ink">{{ lastShop(store) }}</b></span>
+        </div>
+        <div>
+          <div class="hstack faint" style="font-size: 11.5px; margin-bottom: 4px">
+            <span style="flex: 1">Price coverage</span>
+            <span>{{ store.priceCoveragePct }}%</span>
+          </div>
+          <ui-progress [percent]="store.priceCoveragePct" />
+        </div>
+        <button
+          type="button"
+          class="btn btn-outline btn-sm control-btn"
+          (click)="printControl(store)"
+        >
+          <span class="mini-barcode"></span>
+          Print control barcode
+        </button>
+      </div>
+    } @empty {
+      <div class="card faint" style="text-align: center; font-size: 13.5px">
+        No stores yet — they’re created automatically when you add items with a store, or
+        add one here.
+      </div>
+    }
+  </div>
+</div>

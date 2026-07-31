@@ -1,0 +1,10 @@
+services:
+  daemon:
+    environment:
+      LARDER_SCANNERS__SCN01__DEVICE: /dev/serial/by-id/usb-example-scanner
+      LARDER_SCANNERS__SCN01__BAUDRATE: "9600"
+    devices:
+      - /dev/serial/by-id/usb-example-scanner:/dev/serial/by-id/usb-example-scanner
+    group_add:
+      - "${LARDER_DIALOUT_GID:-20}"
+

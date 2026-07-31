@@ -1,0 +1,25 @@
+// Rows use the shared ui-list primitives.
+.alias-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.alias-tag {
+  font-size: 11px;
+  color: var(--sub);
+  background: var(--chip);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.rule-pill {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}

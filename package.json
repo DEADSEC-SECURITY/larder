@@ -1,0 +1,10 @@
+{
+  "name": "larder",
+  "private": true,
+  "packageManager": "pnpm@10.18.1",
+  "scripts": {
+    "web:start": "pnpm --filter web start",
+    "web:build": "pnpm --filter web build",
+    "web:test": "pnpm --filter web test"
+  }
+}

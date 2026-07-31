@@ -1,0 +1,138 @@
+<div class="stack">
+  <div class="hstack" style="align-items: baseline; gap: 12px">
+    <span class="page-title">Inventory</span>
+    @if (data(); as d) {
+      <span class="sub" style="font-size: 12.5px"
+        >{{ d.totalUnits }} units across {{ d.products.length }} products</span
+      >
+    }
+  </div>
+
+  <input
+    class="input"
+    placeholder="Search by name or brand…"
+    [ngModel]="search()"
+    (ngModelChange)="search.set($event)"
+  />
+
+  <div class="hstack wrap" style="gap: 8px">
+    @for (f of filters; track f.key) {
+      <button
+        type="button"
+        class="chip"
+        [class.active]="filter() === f.key"
+        (click)="filter.set(f.key)"
+      >
+        {{ f.label }} {{ counts()[f.key] }}
+      </button>
+    }
+    <select
+      class="select"
+      [class.active]="kind() !== 'all'"
+      [ngModel]="kind()"
+      (ngModelChange)="kind.set($event)"
+      title="Filter by product kind"
+    >
+      <option value="all">All kinds</option>
+      @for (k of kinds; track k.kind) {
+        <option [value]="k.kind">{{ k.label }}</option>
+      }
+    </select>
+    <button
+      type="button"
+      class="chip"
+      [class.active]="selecting()"
+      (click)="toggleSelecting()"
+    >
+      {{ selecting() ? 'Done selecting' : 'Select' }}
+    </button>
+    <span class="spacer faint" style="font-size: 11.5px">Sort</span>
+    @for (s of sorts; track s.key) {
+      <button
+        type="button"
+        class="chip chip-sm"
+        [class.active]="sort() === s.key"
+        (click)="sort.set(s.key)"
+      >
+        {{ s.label }}
+      </button>
+    }
+  </div>
+
+  @if (selecting()) {
+    <div class="bulk-bar">
+      <span style="font-size: 13px; font-weight: 600">
+        {{ selectedBarcodes().length }} products · {{ selectedUnitCount() }} units
+      </span>
+      <div class="spacer hstack wrap" style="gap: 6px">
+        <button type="button" class="btn btn-outline btn-sm" (click)="selectAllVisible()">
+          Select all
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          [disabled]="!selectedBarcodes().length"
+          (click)="bulkOpen.set(true)"
+        >
+          Bulk edit
+        </button>
+      </div>
+    </div>
+  }
+
+  <ui-list>
+    @for (product of rows(); track product.barcode) {
+      <ui-row
+        [selected]="selecting() && selected().has(product.barcode)"
+        (click)="open(product)"
+      >
+        @if (selecting()) {
+          <span class="inv-check" [class.checked]="selected().has(product.barcode)">{{
+            selected().has(product.barcode) ? '✓' : ''
+          }}</span>
+        }
+        <span class="urgency-dot" [style.background]="dotColor(product)"></span>
+        <ui-row-main>
+          <div class="row-title">
+            {{ product.name || 'Unidentified item' }}
+            <span class="count-chip tnum">×{{ product.inStock }}</span>
+            @for (badge of badges(product); track badge.label) {
+              <span class="pill pill-sm" [class]="'pill pill-sm ' + badge.cls">{{
+                badge.label
+              }}</span>
+            }
+          </div>
+          <div class="row-meta">
+            {{ meta(product) }}
+            @if (product.policy) {
+              <span class="faint">
+                · min {{ product.policy.reorderPoint }} → {{ product.policy.targetStock }}</span
+              >
+            }
+          </div>
+        </ui-row-main>
+        <ui-rail [width]="112">
+          <ui-expiry-pill
+            [date]="product.soonestExpiration?.date ?? null"
+            [daysLeft]="product.soonestExpiration?.daysLeft ?? null"
+            [windowDays]="data()?.windowDays ?? 4"
+          />
+        </ui-rail>
+        <ui-rail [width]="76">
+          <span class="inv-price tnum">{{ price(product) }}</span>
+        </ui-rail>
+      </ui-row>
+    } @empty {
+      <ui-empty message="Nothing matches — try a different search or filter." />
+    }
+  </ui-list>
+</div>
+
+@if (bulkOpen()) {
+  <app-bulk-edit
+    [barcodes]="selectedBarcodes()"
+    [unitCount]="selectedUnitCount()"
+    (closed)="bulkOpen.set(false)"
+    (saved)="finishBulk()"
+  />
+}

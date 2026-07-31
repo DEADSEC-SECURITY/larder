@@ -1,0 +1,84 @@
+// Larder design tokens — single source of truth for colors, spacing, radii, type.
+// Shared design tokens for the Larder web interface.
+
+:root {
+  // Surfaces
+  --bg: #fbf9f4;
+  --card: #ffffff;
+  --chip: #f1efe8;
+  --line: rgba(35, 30, 20, 0.1);
+
+  // Ink
+  --ink: #2a2620;
+  --sub: rgba(42, 38, 32, 0.55);
+  --faint: rgba(42, 38, 32, 0.42);
+
+  // Accent + tones
+  --accent: #3e7c52;
+  --accent-bg: #eaf0e6;
+  --warn: #b97a24;
+  --warn-bg: #f8ecda;
+  --danger: #b4483c;
+  --danger-bg: #f6e3e0;
+
+  // Deep banner (grocery call-to-action)
+  --deep: #2e4636;
+  --deep-ink: #f2f1ea;
+
+  // Overlay + shadow
+  --scrim: rgba(20, 17, 12, 0.45);
+  --shadow-modal: 0 24px 60px rgba(20, 17, 12, 0.25);
+  --shadow-drawer: -16px 0 48px rgba(20, 17, 12, 0.18);
+
+  // Density
+  --pad: 20px;
+  --rpad: 12px;
+
+  // One height for every form control (text/date inputs, block selects,
+  // steppers) so mixed rows line up.
+  --h-input: 44px;
+
+  // Radii
+  --r-card: 16px;
+  --r-input: 12px;
+  --r-modal: 20px;
+  --r-row: 10px;
+  --r-pill: 99px;
+
+  // Type
+  --font-body: 'Albert Sans', sans-serif;
+  --font-display: 'Instrument Serif', serif;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #16140f;
+  --card: #211e18;
+  --chip: #2e2a22;
+  --line: rgba(255, 255, 255, 0.09);
+
+  --ink: #edeae2;
+  --sub: rgba(237, 234, 226, 0.6);
+  --faint: rgba(237, 234, 226, 0.45);
+
+  --accent: #8dbd9c;
+  --accent-bg: rgba(141, 189, 156, 0.15);
+  --warn: #e0a863;
+  --warn-bg: rgba(224, 168, 99, 0.15);
+  --danger: #e08578;
+  --danger-bg: rgba(224, 133, 120, 0.14);
+
+  --scrim: rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+:root[data-density='compact'] {
+  --pad: 13px;
+  --rpad: 7px;
+}
+
+// Breakpoint helper — keep in sync with LayoutService.MOBILE_QUERY.
+$mobile: 760px;
+$tablet: 1024px;

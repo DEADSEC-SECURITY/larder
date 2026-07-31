@@ -1,0 +1,350 @@
+@if (detail(); as g) {
+  <div class="stack">
+    <div>
+      <button type="button" class="link-accent back-link" (click)="closeDetail()">
+        ← Stock groups
+      </button>
+    </div>
+
+    <div class="hstack wrap" style="gap: 10px">
+      <span class="page-title">{{ g.name }}</span>
+      <span class="pill pill-chip">{{ kindLabel(g) }}</span>
+      @if (!g.active) {
+        <span class="pill pill-faint">Inactive</span>
+      }
+      <span class="count-chip tnum" title="In stock combined">×{{ g.inStock }}</span>
+    </div>
+    <div class="sub" style="font-size: 13px; margin-top: -8px">
+      {{ genericLabel }} — {{ g.memberCount }} accepted
+      product{{ g.memberCount === 1 ? ' counts' : 's count' }} toward this need together.
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom: 8px">Keep stocked</div>
+      <div class="policy-grid">
+        <div>
+          <div class="field-label">Minimum</div>
+          <ui-stepper [value]="policyMin()" (valueChange)="onPolicyMin($event)" />
+        </div>
+        <div>
+          <div class="field-label">Restock to</div>
+          <ui-stepper [value]="policyTarget()" [min]="1" (valueChange)="policyTarget.set($event)" />
+        </div>
+        <button type="button" class="btn btn-primary policy-save" (click)="savePolicy()">
+          Save
+        </button>
+      </div>
+      <div class="field-hint" style="margin-top: 8px">
+        @if (policyMin() === 0) {
+          Minimum 0 = no auto-restock; save to disable the policy.
+        } @else {
+          Below {{ policyMin() }} combined across every accepted product → shopping list tops
+          it back up to {{ policyTarget() }}.
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom: 4px">Accepted products</div>
+      <ui-list>
+        @for (member of g.members; track member.barcode) {
+          <ui-row [hover]="false">
+            @if (member.imageUrl) {
+              <img class="member-thumb" [src]="member.imageUrl" alt="" />
+            } @else {
+              <div class="member-thumb member-thumb-empty"></div>
+            }
+            <ui-row-main>
+              <div class="row-title">
+                <a [routerLink]="['/inventory', member.barcode]">{{
+                  member.name || 'Unidentified item'
+                }}</a>
+              </div>
+              <div class="row-meta">
+                {{ memberMeta(member) }} · <span class="tnum">{{ member.barcode }}</span>
+              </div>
+            </ui-row-main>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              [disabled]="busyBarcode() === member.barcode"
+              (click)="removeMember(member)"
+            >
+              Remove
+            </button>
+          </ui-row>
+        } @empty {
+          <div class="faint" style="padding: 16px; text-align: center; font-size: 13px">
+            No accepted products yet.
+          </div>
+        }
+      </ui-list>
+      <div class="hstack" style="gap: 8px; margin-top: 10px">
+        <input
+          class="input"
+          style="flex: 1; max-width: 300px"
+          placeholder="Add product by barcode…"
+          [ngModel]="newMemberBarcode()"
+          (ngModelChange)="newMemberBarcode.set($event)"
+          (keyup.enter)="addMember()"
+        />
+        <button
+          type="button"
+          class="btn btn-outline"
+          [disabled]="!newMemberBarcode().trim()"
+          (click)="addMember()"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hstack" style="gap: 8px; margin-bottom: 4px">
+        <span class="card-title">Needs review</span>
+        @if (pendingCandidates().length) {
+          <span class="pill pill-warn">{{ pendingCandidates().length }} pending</span>
+        }
+      </div>
+      <ui-list>
+        @for (candidate of pendingCandidates(); track candidate.barcode) {
+          <ui-row [hover]="false">
+            @if (candidate.imageUrl) {
+              <img class="member-thumb" [src]="candidate.imageUrl" alt="" />
+            } @else {
+              <div class="member-thumb member-thumb-empty"></div>
+            }
+            <ui-row-main>
+              <div class="row-title">
+                <a [routerLink]="['/inventory', candidate.barcode]">{{
+                  candidate.name || 'Unidentified item'
+                }}</a>
+                @if (candidate.brand) {
+                  <span class="sub" style="font-weight: 400">· {{ candidate.brand }}</span>
+                }
+              </div>
+              <div class="row-meta">{{ candidateEvidence(candidate) }}</div>
+            </ui-row-main>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              [disabled]="busyBarcode() === candidate.barcode"
+              (click)="decide(candidate, true)"
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              [disabled]="busyBarcode() === candidate.barcode"
+              (click)="decide(candidate, false)"
+            >
+              Reject
+            </button>
+          </ui-row>
+        } @empty {
+          <div class="faint" style="padding: 16px; text-align: center; font-size: 13px">
+            Nothing waiting for review.
+          </div>
+        }
+      </ui-list>
+      @if (rejectedCount()) {
+        <div class="faint" style="font-size: 11.5px; margin-top: 8px">
+          {{ rejectedCount() }} earlier suggestion{{ rejectedCount() === 1 ? '' : 's' }}
+          rejected — those barcodes won’t be suggested again.
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom: 8px">Matching rules</div>
+      <div class="stack" style="gap: 12px">
+        <div class="rules-grid">
+          <div>
+            <div class="field-label">Group name</div>
+            <input class="input" [ngModel]="formName()" (ngModelChange)="formName.set($event)" />
+          </div>
+          <div>
+            <div class="field-label">Required terms</div>
+            <ui-term-chips
+              [value]="formRequired()"
+              placeholder="e.g. strawberry — Enter to add"
+              (valueChange)="formRequired.set($event)"
+            />
+          </div>
+          <div>
+            <div class="field-label">Excluded terms</div>
+            <ui-term-chips
+              [value]="formExcluded()"
+              placeholder="e.g. frozen — Enter to add"
+              (valueChange)="formExcluded.set($event)"
+            />
+          </div>
+          <div>
+            <div class="field-label">Allowed forms</div>
+            <ui-term-chips
+              [value]="formForms()"
+              placeholder="e.g. fresh — Enter to add"
+              (valueChange)="formForms.set($event)"
+            />
+          </div>
+          <div>
+            <div class="field-label">Categories</div>
+            <ui-term-chips
+              [value]="formCategories()"
+              [suggestions]="categorySuggestions()"
+              placeholder="e.g. berries — Enter to add"
+              (valueChange)="formCategories.set($event)"
+            />
+          </div>
+          <div class="threshold-pair">
+            <div>
+              <div class="field-label">Auto-accept at</div>
+              <input
+                class="input tnum"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                [ngModel]="formAutoThreshold()"
+                (ngModelChange)="formAutoThreshold.set($event)"
+              />
+            </div>
+            <div>
+              <div class="field-label">Review from</div>
+              <input
+                class="input tnum"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                [ngModel]="formReviewThreshold()"
+                (ngModelChange)="formReviewThreshold.set($event)"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="field-hint">
+          Matches at or above auto-accept join automatically; between the two thresholds
+          they wait here for review. Brand and package size are always ignored for this
+          scope.
+        </div>
+        @if (thresholdError()) {
+          <div class="threshold-error">{{ thresholdError() }}</div>
+        }
+        <div>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!!thresholdError()"
+            (click)="saveRules()"
+          >
+            Save &amp; rescan
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card danger-card">
+      <div class="card-title" style="margin-bottom: 8px">Danger zone</div>
+      @if (g.active) {
+        <div class="hstack wrap" style="gap: 12px">
+          <div class="sub" style="font-size: 12.5px; flex: 1; min-width: 220px">
+            Deactivating keeps members and history but stops matching and clears the group’s
+            automatic shopping demand.
+          </div>
+          <button type="button" class="btn btn-danger-outline" (click)="setActive(false)">
+            {{ confirmDeactivate() ? 'Tap again to confirm' : 'Deactivate group' }}
+          </button>
+        </div>
+      } @else {
+        <div class="hstack wrap" style="gap: 12px">
+          <div class="sub" style="font-size: 12.5px; flex: 1; min-width: 220px">
+            This group is inactive — members are kept but nothing matches or restocks.
+          </div>
+          <button type="button" class="btn btn-outline" (click)="setActive(true)">
+            Reactivate
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+} @else {
+  <div class="stack">
+    <div class="hstack wrap" style="gap: 10px">
+      <span class="page-title">Stock groups</span>
+      <div class="spacer">
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          [disabled]="rescanning()"
+          (click)="rescan()"
+        >
+          {{ rescanning() ? 'Rescanning…' : 'Rescan products' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="callout">
+      A stock group keeps a generic need in stock — <b>{{ genericLabel.toLowerCase() }}</b> —
+      instead of one exact barcode. Create one from a product page: Restock policy →
+      {{ genericLabel }}. Compatible products then match automatically.
+    </div>
+
+    <ui-list>
+      @for (group of active(); track group.id) {
+        <ui-row (click)="open(group)">
+          <ui-row-main>
+            <div class="row-title">
+              {{ group.name }}
+              <span class="count-chip tnum" title="In stock combined">×{{ group.inStock }}</span>
+              @if (group.pendingCandidateCount) {
+                <span class="pill pill-warn"
+                  >{{ group.pendingCandidateCount }} to review</span
+                >
+              }
+            </div>
+            <div class="row-meta">{{ kindLabel(group) }} · {{ groupMeta(group) }}</div>
+          </ui-row-main>
+          <span class="link-accent" style="font-size: 12.5px">Manage</span>
+        </ui-row>
+      } @empty {
+        <div class="faint" style="padding: 24px; text-align: center; font-size: 13px">
+          No stock groups yet — open a product and switch its restock policy to
+          “{{ genericLabel }}”.
+        </div>
+      }
+    </ui-list>
+
+    @if (archived().length) {
+      <div>
+        <button
+          type="button"
+          class="chip"
+          [class.active]="showArchived()"
+          (click)="showArchived.set(!showArchived())"
+        >
+          Inactive groups ({{ archived().length }})
+        </button>
+      </div>
+      @if (showArchived()) {
+        <ui-list>
+          @for (group of archived(); track group.id) {
+            <ui-row (click)="open(group)">
+              <ui-row-main>
+                <div class="row-title" style="opacity: 0.6">{{ group.name }}</div>
+                <div class="row-meta">
+                  {{ kindLabel(group) }} · {{ group.memberCount }} member{{
+                    group.memberCount === 1 ? '' : 's'
+                  }}
+                  kept — matching and restocking paused.
+                </div>
+              </ui-row-main>
+              <span class="link-accent" style="font-size: 12.5px">Manage</span>
+            </ui-row>
+          }
+        </ui-list>
+      }
+    }
+  </div>
+}

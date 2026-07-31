@@ -1,0 +1,37 @@
+.cat-block {
+  padding: 4px 0;
+}
+
+.cat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.cat-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0 7px 22px;
+  border-top: 1px dashed var(--line);
+}
+
+.rule-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  font-family: inherit;
+
+  &:hover {
+    opacity: 0.75;
+  }
+}

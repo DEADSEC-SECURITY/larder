@@ -1,0 +1,458 @@
+@use 'tokens' as *;
+
+// ---------- Reset & typography ----------
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.sub {
+  color: var(--sub);
+}
+
+.faint {
+  color: var(--faint);
+}
+
+// ---------- Buttons ----------
+
+.btn {
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  border-radius: var(--r-pill);
+  padding: 10px 18px;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+  transition: opacity 0.12s, border-color 0.12s;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+
+  &:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+}
+
+.btn-danger-soft {
+  background: var(--danger-bg);
+  border: 1px solid transparent;
+  color: var(--danger);
+
+  &:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--danger);
+
+  &:hover:not(:disabled) {
+    border-color: var(--danger);
+  }
+}
+
+.btn-deep {
+  background: var(--deep-ink);
+  color: var(--deep);
+
+  &:hover:not(:disabled) {
+    opacity: 0.92;
+  }
+}
+
+.btn-sm {
+  padding: 8px 13px;
+  font-size: 12px;
+}
+
+// ---------- Chips (filters, segmented controls) ----------
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  background: var(--chip);
+  color: var(--sub);
+  border: none;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+
+  &:hover {
+    opacity: 0.85;
+  }
+
+  &.active {
+    background: var(--ink);
+    color: var(--card);
+    opacity: 1;
+  }
+}
+
+.chip-sm {
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+// Small inline quantity chip (×N) shown beside item names.
+.count-chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--chip);
+  color: var(--sub);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+// ---------- Pills (status labels) ----------
+
+.pill {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  padding: 4px 11px;
+  white-space: nowrap;
+
+  &.pill-sm {
+    font-size: 10.5px;
+    padding: 2px 8px;
+  }
+
+  &.pill-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}
+
+.pill-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.pill-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pill-ok {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.pill-chip {
+  background: var(--chip);
+  color: var(--sub);
+}
+
+.pill-faint {
+  background: var(--chip);
+  color: var(--faint);
+}
+
+.pill-none {
+  background: transparent;
+  color: var(--faint);
+}
+
+// ---------- Cards & rows ----------
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: var(--pad);
+}
+
+.card-flush {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 6px 10px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.row-hover {
+  border-radius: var(--r-row);
+  transition: background 0.1s;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--chip);
+
+    // Chip-background elements would blend invisibly into the hover tint —
+    // lift them to the card color instead (manual-override selects keep
+    // their accent tint).
+    .select:not(.manual),
+    .count-chip,
+    .alias-tag {
+      background-color: var(--card);
+    }
+  }
+}
+
+.row-line {
+  border-bottom: 1px solid var(--line);
+}
+
+// Text slots inside ui-row-main (see ui/list.ts). Global because they style
+// projected content the list components can't reach.
+.row-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.row-meta {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.link-accent {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  padding: 0;
+
+  &:hover {
+    opacity: 0.75;
+  }
+}
+
+// ---------- Inputs ----------
+
+.input {
+  width: 100%;
+  height: var(--h-input);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-input);
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+
+  &::placeholder {
+    color: var(--faint);
+  }
+
+  &:focus {
+    border-color: var(--accent);
+  }
+}
+
+.input-on-bg {
+  background: var(--bg);
+}
+
+// Pill/chip-styled form control. On <select> a theme-aware chevron is drawn
+// with two gradient squares (background-image can't use CSS variables inside
+// data URIs, but gradients can).
+.select {
+  appearance: none;
+  background-color: var(--chip);
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sub);
+  outline: none;
+  cursor: pointer;
+  transition: color 0.12s, background-color 0.12s;
+
+  &:hover {
+    color: var(--ink);
+  }
+}
+
+select.select {
+  padding-right: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--sub) 50%),
+    linear-gradient(135deg, var(--sub) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 55%,
+    calc(100% - 13px) 55%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+// Form-field variant: same height and corner radius as .input, so selects
+// and text inputs line up inside forms. Inline pill selects (toolbars, rows)
+// keep the compact chip look above.
+.select-block {
+  width: 100%;
+  height: var(--h-input);
+  border-radius: var(--r-input);
+  font-size: 14px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--sub);
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: 4px;
+}
+
+// ---------- Callouts ----------
+
+.callout {
+  background: var(--accent-bg);
+  border-radius: 14px;
+  padding: 14px var(--pad);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.banner-deep {
+  background: var(--deep);
+  color: var(--deep-ink);
+  border-radius: var(--r-card);
+}
+
+// ---------- Animations ----------
+
+@keyframes lpulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes ltoast {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  animation: lpulse 1.4s infinite;
+}
+
+// ---------- Layout helpers ----------
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hstack {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spacer {
+  margin-left: auto;
+}
+
+.wrap {
+  flex-wrap: wrap;
+}
+
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 14px;
+}

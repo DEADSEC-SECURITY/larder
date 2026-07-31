@@ -1,0 +1,92 @@
+<div class="stack">
+  <div class="hstack wrap" style="align-items: baseline; gap: 12px">
+    <span class="page-title">Shopping rules</span>
+    <span class="sub" style="font-size: 12.5px">{{ rules().length }} rules</span>
+    <div class="spacer">
+      <button type="button" class="btn btn-primary btn-sm" (click)="creating.set(true)">
+        + New rule
+      </button>
+    </div>
+  </div>
+
+  <div class="callout">
+    Rules decide where a shopping item should be bought. The most specific source wins:
+    <b>manual choice</b> → <b>product rule</b> → <b>brand rule</b> → <b>category rule</b> →
+    lowest recorded price. A typical rule: <i>if brand is Kirkland Signature, require
+    Costco</i>.
+  </div>
+
+  <ui-list>
+    @for (rule of rules(); track rule.id) {
+      <ui-row [hover]="false" [class.disabled]="!rule.enabled">
+        <ui-toggle [on]="rule.enabled" (toggled)="toggleEnabled(rule, $event)" />
+        <div class="rule-main row-hover" (click)="editing.set(rule)">
+          <div class="row-title">
+            {{ rule.name }}
+            <span
+              class="pill pill-sm"
+              [class.pill-warn]="rule.behavior === 'require'"
+              [class.pill-chip]="rule.behavior === 'prefer'"
+              >{{ rule.behavior === 'require' ? 'Required' : 'Preferred' }}</span
+            >
+          </div>
+          <div class="row-meta">
+            {{ matcherLabel(rule) }} · {{ rule.store?.name ?? 'deleted store' }} ·
+            {{ rule.match.productCount }} matching product{{
+              rule.match.productCount === 1 ? '' : 's'
+            }}
+          </div>
+          @if (rule.store && !rule.store.active) {
+            <div class="rule-warning">
+              {{ rule.store.name }} is inactive —
+              {{
+                rule.behavior === 'require'
+                  ? 'items stay assigned there with a warning'
+                  : 'items fall back to price history'
+              }}
+            </div>
+          }
+        </div>
+        <button
+          type="button"
+          class="btn btn-danger-outline btn-sm"
+          (click)="remove(rule)"
+        >
+          {{ confirmDeleteId() === rule.id ? 'Confirm' : 'Delete' }}
+        </button>
+      </ui-row>
+    } @empty {
+      <div class="empty-rules">
+        <div style="font-size: 14px; font-weight: 600; margin-bottom: 6px">
+          No shopping rules yet
+        </div>
+        <div class="sub" style="font-size: 13px; line-height: 1.55; max-width: 460px; margin: 0 auto">
+          Without rules, shopping items go to the store with the lowest recorded price. Add a
+          rule to pin products, brands, or whole categories to a store — a manual choice on
+          the shopping list always wins over any rule.
+        </div>
+        <button
+          type="button"
+          class="btn btn-primary"
+          style="margin-top: 14px"
+          (click)="creating.set(true)"
+        >
+          Create first rule
+        </button>
+      </div>
+    }
+  </ui-list>
+</div>
+
+@if (creating()) {
+  <app-rule-edit
+    [presetMatchType]="presetMatchType()"
+    [presetMatcherId]="presetMatcherId()"
+    (closed)="closeCreate()"
+    (saved)="refresh()"
+    (conflictOpen)="openConflicting()"
+  />
+}
+@if (editing(); as rule) {
+  <app-rule-edit [rule]="rule" (closed)="editing.set(null)" (saved)="refresh()" />
+}

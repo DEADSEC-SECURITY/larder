@@ -1,0 +1,57 @@
+.back-link {
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.policy-grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.policy-save {
+  height: var(--h-input);
+}
+
+.member-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.member-thumb-empty {
+  background: var(--bg);
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.threshold-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.threshold-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.danger-card {
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}

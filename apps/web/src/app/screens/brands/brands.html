@@ -1,0 +1,72 @@
+<div class="stack">
+  <div class="hstack wrap" style="align-items: baseline; gap: 12px">
+    <span class="page-title">Brands</span>
+    <span class="sub" style="font-size: 12.5px">{{ brands().length }} canonical brands</span>
+    <div class="spacer">
+      <button type="button" class="btn btn-primary btn-sm" (click)="creating.set(true)">
+        + New brand
+      </button>
+    </div>
+  </div>
+
+  <input
+    class="input"
+    placeholder="Search brands or aliases…"
+    [ngModel]="search()"
+    (ngModelChange)="search.set($event)"
+  />
+
+  <ui-list>
+    @for (brand of rows(); track brand.id) {
+      <ui-row (click)="editing.set(brand)">
+        <ui-row-main>
+          <div class="row-title">
+            {{ brand.name }}
+            @if (!brand.active) {
+              <span class="pill pill-sm pill-faint">Inactive</span>
+            }
+          </div>
+          @if (brand.aliases.length) {
+            <div class="alias-list">
+              @for (alias of brand.aliases; track alias) {
+                <span class="alias-tag">{{ alias }}</span>
+              }
+            </div>
+          }
+        </ui-row-main>
+        <ui-rail [width]="84">
+          <span class="sub tnum" style="font-size: 12.5px"
+            >{{ brand.productCount }} product{{ brand.productCount === 1 ? '' : 's' }}</span
+          >
+        </ui-rail>
+        <ui-rail [width]="88">
+          <button
+            type="button"
+            class="pill pill-sm rule-pill"
+            [class.pill-ok]="brand.routingRuleId"
+            [class.pill-chip]="!brand.routingRuleId"
+            (click)="$event.stopPropagation(); openRule(brand)"
+          >
+            {{ brand.routingRuleId ? 'Store rule' : 'No rule' }}
+          </button>
+        </ui-rail>
+        <span class="link-accent" style="font-size: 12.5px">Edit</span>
+      </ui-row>
+    } @empty {
+      @if (search().trim()) {
+        <ui-empty message="No brands match your search." />
+      } @else {
+        <ui-empty
+          message="No brands yet — they’re populated automatically when scanned products are identified, or add one manually."
+        />
+      }
+    }
+  </ui-list>
+</div>
+
+@if (creating()) {
+  <app-brand-edit (closed)="creating.set(false)" (saved)="load()" />
+}
+@if (editing(); as brand) {
+  <app-brand-edit [brand]="brand" (closed)="editing.set(null)" (saved)="load()" />
+}

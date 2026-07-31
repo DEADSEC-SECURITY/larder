@@ -1,0 +1,262 @@
+<div class="settings-grid">
+  <div class="page-title" style="grid-column: 1 / -1">Preferences</div>
+
+  @if (auth.required()) {
+    <div class="card stack" style="gap: 12px">
+      <div class="card-title">Account</div>
+      <div class="hstack" style="gap: 12px">
+        <div style="flex: 1; min-width: 0">
+          <div class="row-title">
+            {{ auth.user()?.name || auth.user()?.username || 'Signed in' }}
+          </div>
+          @if (auth.user()?.email) {
+            <div class="row-meta">{{ auth.user()?.email }}</div>
+          }
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" (click)="auth.signOut()">
+          Sign out
+        </button>
+      </div>
+      @if (auth.user()?.groups?.length) {
+        <div class="hstack wrap" style="gap: 6px">
+          @for (group of auth.user()?.groups; track group) {
+            <span class="chip chip-sm">{{ group }}</span>
+          }
+        </div>
+      }
+      <div class="setting-row row-line" style="padding-top: 10px">
+        <div style="flex: 1">
+          <div style="font-size: 13.5px; font-weight: 600">Signed-in devices</div>
+          <div class="sub" style="font-size: 12px">
+            Sessions last a year so the phone app stays signed in. Changing your
+            Authentik password ends them all.
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" (click)="loadSessions()">
+          {{ sessions() === null ? 'Show' : 'Refresh' }}
+        </button>
+      </div>
+      @if (sessions(); as rows) {
+        <div class="stack" style="gap: 2px">
+          @for (row of rows; track row.id) {
+            <div class="setting-row row-line">
+              <div style="flex: 1; min-width: 0">
+                <div style="font-size: 13px; font-weight: 600">
+                  {{ describeAgent(row.userAgent) }}
+                  @if (row.current) {
+                    <span class="chip chip-sm" style="margin-left: 6px">This device</span>
+                  }
+                </div>
+                <div class="sub" style="font-size: 12px">
+                  Last seen {{ shortDate(row.lastSeenAt) }} · expires
+                  {{ shortDate(row.expiresAt) }}
+                </div>
+              </div>
+            </div>
+          }
+          @if (!rows.length) {
+            <div class="sub" style="font-size: 12px">No other sessions.</div>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              style="align-self: flex-start; margin-top: 8px"
+              (click)="auth.signOut(true)"
+            >
+              Sign out everywhere
+            </button>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <div class="card stack" style="gap: 14px">
+    <div class="card-title">Appearance</div>
+    <div class="hstack wrap" style="gap: 10px">
+      <span style="font-size: 13.5px; flex: 1; min-width: 80px">Theme</span>
+      @for (option of themeOptions; track option) {
+        <button
+          type="button"
+          class="chip chip-sm"
+          [class.active]="theme.theme() === option"
+          (click)="theme.setTheme(option)"
+        >
+          {{ option[0].toUpperCase() + option.slice(1) }}
+        </button>
+      }
+    </div>
+    <div class="hstack wrap" style="gap: 10px">
+      <span style="font-size: 13.5px; flex: 1; min-width: 80px">Density</span>
+      @for (option of densityOptions; track option) {
+        <button
+          type="button"
+          class="chip chip-sm"
+          [class.active]="theme.density() === option"
+          (click)="theme.setDensity(option)"
+        >
+          {{ option[0].toUpperCase() + option.slice(1) }}
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="card stack" style="gap: 4px">
+    <div class="card-title" style="margin-bottom: 8px">Inventory behavior</div>
+    <div class="setting-row row-line">
+      <div style="flex: 1">
+        <div style="font-size: 13.5px; font-weight: 600">Removal policy</div>
+        <div class="sub" style="font-size: 12px">{{ policyDescription() }}</div>
+      </div>
+      <select
+        class="select"
+        [ngModel]="settings()?.removalPolicy ?? 'FEFO'"
+        (ngModelChange)="onPolicy($event)"
+      >
+        @for (policy of policies; track policy) {
+          <option [value]="policy">{{ policy }}</option>
+        }
+      </select>
+    </div>
+    <div class="setting-row row-line">
+      <div style="flex: 1">
+        <div style="font-size: 13.5px; font-weight: 600">Expiring window</div>
+        <div class="sub" style="font-size: 12px">Days ahead counted as “expiring soon”</div>
+      </div>
+      <input
+        type="number"
+        class="select"
+        min="1"
+        max="30"
+        [ngModel]="settings()?.expiringWindowDays ?? 4"
+        (ngModelChange)="onWindowDays($event)"
+      />
+    </div>
+    @for (toggle of inventoryToggles; track toggle.key) {
+      <div class="setting-row row-line">
+        <div style="flex: 1">
+          <div style="font-size: 13.5px; font-weight: 600">{{ toggle.title }}</div>
+          <div class="sub" style="font-size: 12px">{{ toggle.desc }}</div>
+        </div>
+        <ui-toggle [on]="toggleValue(toggle.key)" (toggled)="onToggle(toggle.key, $event)" />
+      </div>
+    }
+  </div>
+
+  <div class="card stack" style="gap: 4px">
+    <div class="card-title" style="margin-bottom: 8px">Product lookup &amp; scanners</div>
+    @for (toggle of scannerToggles; track toggle.key) {
+      <div class="setting-row row-line">
+        <div style="flex: 1">
+          <div style="font-size: 13.5px; font-weight: 600">{{ toggle.title }}</div>
+          <div class="sub" style="font-size: 12px">{{ toggle.desc }}</div>
+        </div>
+        <ui-toggle [on]="toggleValue(toggle.key)" (toggled)="onToggle(toggle.key, $event)" />
+      </div>
+    }
+    <button
+      type="button"
+      class="btn btn-outline"
+      style="margin-top: 10px; align-self: flex-start"
+      (click)="state.drawerOpen.set(true)"
+    >
+      Manage scanners…
+    </button>
+  </div>
+
+  <div class="card stack timing-card">
+    <div>
+      <div class="card-title">Workflow timing</div>
+      <div class="sub" style="font-size: 12px">
+        Scanner context and intake behavior. Changes apply to every scanner.
+      </div>
+    </div>
+    <div class="timing-grid">
+      @for (control of workflowTimings; track control.key) {
+        <label class="setting-row row-line timing-row">
+          <span style="flex: 1">
+            <span class="timing-title">{{ control.title }}</span>
+            <span class="sub timing-desc">{{ control.desc }}</span>
+          </span>
+          <span class="timing-input">
+            <input
+              type="number"
+              class="select"
+              [min]="control.min"
+              [max]="control.max"
+              [step]="control.step"
+              [ngModel]="timingValue(control)"
+              (change)="onTiming(control, $any($event.target).value)"
+            />
+            <span class="faint">{{ control.unit }}</span>
+          </span>
+        </label>
+      }
+    </div>
+    <button
+      type="button"
+      class="btn btn-outline"
+      style="align-self: flex-start"
+      (click)="resetTimings(workflowTimings)"
+    >
+      Reset to defaults
+    </button>
+  </div>
+
+  <div class="card stack timing-card">
+    <div>
+      <div class="card-title">Interface timing</div>
+      <div class="sub" style="font-size: 12px">
+        Feedback, confirmations, and live refresh behavior.
+      </div>
+    </div>
+    <div class="timing-grid">
+      @for (control of interfaceTimings; track control.key) {
+        <label class="setting-row row-line timing-row">
+          <span style="flex: 1">
+            <span class="timing-title">{{ control.title }}</span>
+            <span class="sub timing-desc">{{ control.desc }}</span>
+          </span>
+          <span class="timing-input">
+            <input
+              type="number"
+              class="select"
+              [min]="control.min"
+              [max]="control.max"
+              [step]="control.step"
+              [ngModel]="timingValue(control)"
+              (change)="onTiming(control, $any($event.target).value)"
+            />
+            <span class="faint">{{ control.unit }}</span>
+          </span>
+        </label>
+      }
+    </div>
+    <button
+      type="button"
+      class="btn btn-outline"
+      style="align-self: flex-start"
+      (click)="resetTimings(interfaceTimings)"
+    >
+      Reset to defaults
+    </button>
+  </div>
+
+  <div class="card stack" style="gap: 10px">
+    <div class="card-title">Data &amp; maintenance</div>
+    <div class="hstack wrap" style="gap: 8px">
+      <button type="button" class="btn btn-outline" (click)="exportCsv()">
+        Export inventory (CSV)
+      </button>
+      <button type="button" class="btn btn-outline" (click)="recalculate()">
+        Recalculate estimates
+      </button>
+      <button type="button" class="btn btn-danger-soft" (click)="reset()">
+        {{ confirmReset() ? 'Tap again to confirm' : 'Reset all inventory' }}
+      </button>
+    </div>
+    <div class="faint" style="font-size: 11.5px">
+      Reset clears all units but keeps products, categories and rules.
+    </div>
+  </div>
+</div>

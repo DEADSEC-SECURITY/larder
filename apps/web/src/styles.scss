@@ -1,0 +1,10 @@
+/* Larder web — global styles */
+@use '@fontsource/albert-sans/400.css' as albert-sans-400;
+@use '@fontsource/albert-sans/500.css' as albert-sans-500;
+@use '@fontsource/albert-sans/600.css' as albert-sans-600;
+@use '@fontsource/albert-sans/700.css' as albert-sans-700;
+@use '@fontsource/instrument-serif/400.css' as instrument-serif-400;
+@use '@fontsource/instrument-serif/400-italic.css' as instrument-serif-400i;
+
+@use 'styles/tokens';
+@use 'styles/base';

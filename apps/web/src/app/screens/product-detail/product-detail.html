@@ -1,0 +1,438 @@
+@if (detail(); as d) {
+  <div class="stack" style="gap: 16px">
+    <div>
+      <a routerLink="/inventory" class="link-accent" style="font-size: 13px">← Inventory</a>
+    </div>
+
+    <div class="card head-card">
+      <div class="head-row">
+        <div class="head-main">
+          <div class="hstack wrap" style="gap: 10px">
+            <span class="display" style="font-size: 30px">{{ displayName() }}</span>
+            @for (brand of d.brands; track brand.id) {
+              <button
+                type="button"
+                class="brand-link"
+                [class.primary]="d.brandRef?.id === brand.id"
+                title="Edit brands"
+                (click)="brandsOpen.set(true)"
+              >
+                {{ brand.name }}
+              </button>
+            } @empty {
+              <button
+                type="button"
+                class="link-accent"
+                style="font-size: 12px"
+                (click)="brandsOpen.set(true)"
+              >
+                + Add brand
+              </button>
+            }
+            @if (d.idStatus !== 'ok') {
+              <span class="pill" [class]="'pill ' + idPill().cls">{{ idPill().label }}</span>
+            }
+            @if (d.archived) {
+              <span class="pill pill-chip">Archived</span>
+              <button type="button" class="link-accent" (click)="restoreProduct()">Restore</button>
+            }
+            @if (d.idStatus === 'failed') {
+              <button type="button" class="link-accent" (click)="retryEnrichment()">
+                Retry lookup
+              </button>
+            }
+            <span class="count-chip tnum spacer" title="In stock">×{{ d.inStock }}</span>
+          </div>
+          <div class="sub" style="font-size: 13px; margin-top: 4px">{{ metaLine() }}</div>
+          @if (d.description) {
+            <div class="sub" style="font-size: 13px; margin-top: 6px; line-height: 1.5">
+              {{ d.description }}
+            </div>
+          }
+        </div>
+      </div>
+      <div class="head-footer">
+        <span class="mini-barcode"></span>
+        <span class="footer-digits tnum">{{ barcodeCaption() }}</span>
+        <button type="button" class="link-accent" style="font-size: 12px" (click)="printBarcode()">
+          Print barcode
+        </button>
+        <button
+          type="button"
+          class="link-accent"
+          style="font-size: 12px"
+          (click)="editOpen.set(true)"
+        >
+          Edit product
+        </button>
+        <span class="spacer"></span>
+        @if (!d.archived) {
+          <button
+            type="button"
+            class="trash-inline"
+            [class.confirming]="confirmDelete()"
+            (click)="deleteProduct()"
+            [attr.aria-label]="confirmDelete() ? 'Tap again to confirm deletion' : 'Delete product'"
+            [title]="confirmDelete() ? 'Tap again to confirm' : 'Delete product'"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"
+              ></path>
+            </svg>
+            @if (confirmDelete()) {
+              <span>Delete?</span>
+            }
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      @if (assignment(); as buy) {
+        <div class="card">
+          <div class="hstack" style="align-items: baseline; gap: 8px">
+            <span class="stat-label">Buy at</span>
+            @if (buy.behavior) {
+              <span
+                class="pill pill-sm"
+                [class.pill-warn]="buy.behavior === 'require'"
+                [class.pill-chip]="buy.behavior === 'prefer'"
+                >{{ buy.behavior === 'require' ? 'Required' : 'Preferred' }}</span
+              >
+            }
+            @if (buy.ruleId) {
+              <a
+                class="link-accent spacer"
+                style="font-size: 12px"
+                routerLink="/settings/rules"
+                [queryParams]="{ rule: buy.ruleId }"
+                >Rule</a
+              >
+            }
+          </div>
+          <div class="stat-value display">{{ buy.storeName ?? 'Any store' }}</div>
+          <div class="faint" style="font-size: 11px">
+            {{ buy.reason || 'No rule or price history yet' }}
+          </div>
+          @if (buy.warning) {
+            <div class="buy-warning">{{ buy.warning }}</div>
+          }
+        </div>
+      }
+      <div class="card">
+        <div class="stat-label">Soonest expiry</div>
+        <div class="stat-value display">{{ soonestLabel() }}</div>
+      </div>
+      @if (groupCard(); as group) {
+        <div class="card">
+          <div class="hstack" style="align-items: baseline; gap: 8px">
+            <span class="stat-label">Counts toward</span>
+            <a
+              class="link-accent spacer"
+              style="font-size: 12px; text-align: right"
+              routerLink="/settings/stock-groups"
+              [queryParams]="{ group: group.id }"
+              >Manage</a
+            >
+          </div>
+          <div class="stat-value display">{{ group.name }}</div>
+          <div class="faint" style="font-size: 11px">
+            {{ group.inStock }} in stock combined · this barcode ×{{ d.inStock }} ·
+            {{ group.note }}
+          </div>
+        </div>
+      }
+      <div class="card stat-clickable" (click)="policyOpen.set(true)">
+        <div class="hstack" style="align-items: baseline">
+          <span class="stat-label">Restock policy</span>
+          <span class="link-accent spacer" style="font-size: 12px">Edit</span>
+        </div>
+        <div class="stat-value display">{{ parLabel() }}</div>
+        <div class="faint" style="font-size: 11px">{{ parNote() }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hstack wrap" style="gap: 8px; margin-bottom: 10px">
+        <span class="card-title" style="margin-right: auto">Units</span>
+        @if (d.inStock > 1) {
+          <button type="button" class="chip chip-sm" (click)="toggleSelectAll()">
+            {{ allSelected() ? 'Clear selection' : 'Select all' }}
+          </button>
+        }
+        <button
+          type="button"
+          class="chip chip-sm"
+          [class.active]="unitFilter() === 'in'"
+          (click)="unitFilter.set('in')"
+        >
+          In stock
+        </button>
+        <button
+          type="button"
+          class="chip chip-sm"
+          [class.active]="unitFilter() === 'all'"
+          (click)="unitFilter.set('all')"
+        >
+          All
+        </button>
+      </div>
+      @if (selectedIds().length) {
+        <div class="bulk-bar">
+          <span style="font-size: 13px; font-weight: 600">{{ selectedIds().length }} selected</span>
+          <div class="spacer hstack" style="gap: 6px">
+            <button type="button" class="btn btn-outline btn-sm" (click)="bulkOpen.set(true)">
+              Edit
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" (click)="bulkTerminate('remove')">
+              Remove
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger-outline btn-sm"
+              (click)="bulkTerminate('waste')"
+            >
+              Waste
+            </button>
+          </div>
+        </div>
+      }
+      <div>
+        @for (unit of units(); track unit.id) {
+          <div class="unit-row row-line" [class.selected]="selected().has(unit.id)">
+            @if (unit.status === 'in_stock') {
+              <button
+                type="button"
+                class="unit-check"
+                [class.checked]="selected().has(unit.id)"
+                (click)="toggleSelected(unit)"
+                [attr.aria-label]="'Select unit'"
+              >
+                {{ selected().has(unit.id) ? '✓' : '' }}
+              </button>
+            }
+            <div class="unit-main">
+              <div style="font-size: 13.5px; font-weight: 600">
+                {{ unitTitle(unit) }}
+                <span class="pill pill-tag" [class]="'pill pill-tag ' + kindPill(unit).cls">{{
+                  kindPill(unit).label
+                }}</span>
+              </div>
+              <div class="sub" style="font-size: 12px">{{ unitMeta(unit) }}</div>
+            </div>
+            @if (unit.status === 'in_stock') {
+              <div class="hstack" style="gap: 6px">
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  (click)="editingUnit.set(unit)"
+                >
+                  Edit
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" (click)="removeUnit(unit)">
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-danger-outline btn-sm"
+                  (click)="wasteUnit(unit)"
+                >
+                  Waste
+                </button>
+              </div>
+            } @else {
+              <div class="hstack" style="gap: 10px">
+                <span class="unit-status">{{
+                  unit.status === 'removed' ? 'removed' : 'wasted'
+                }}</span>
+                <button
+                  type="button"
+                  class="link-accent"
+                  style="font-size: 12px"
+                  (click)="correctUnit(unit.id, unit.status === 'removed' ? 'trashed' : 'removed')"
+                >
+                  {{ unit.status === 'removed' ? 'Wasted instead' : 'Removed instead' }}
+                </button>
+                <button
+                  type="button"
+                  class="link-accent"
+                  style="font-size: 12px"
+                  (click)="correctUnit(unit.id, 'in_stock')"
+                >
+                  Restore
+                </button>
+              </div>
+            }
+          </div>
+        } @empty {
+          <div class="faint" style="padding: 20px; text-align: center; font-size: 13px">
+            No units — this product is out of stock.
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 8px">Expiration behavior</div>
+        <div style="font-size: 13.5px; line-height: 1.5">{{ ruleText() }}</div>
+        <div class="sub" style="font-size: 12px; margin-top: 8px; line-height: 1.5">
+          A printed date on the package is a <b>confirmed</b> date and always wins. Without one,
+          Larder <b>estimates</b> from the category rule.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 8px">Purchase history</div>
+        <div class="stack" style="gap: 7px; font-size: 13px">
+          @for (h of d.history.slice(0, 4); track h.observedAt) {
+            <div class="hstack" style="gap: 10px">
+              <span style="flex: 1">{{ h.storeName }}</span>
+              <span class="sub">{{ historyDate(h.observedAt) }}</span>
+              <span class="tnum" style="font-weight: 600">{{ money(h.price) }}</span>
+            </div>
+          } @empty {
+            <div class="faint">No purchases recorded yet.</div>
+          }
+          @if (d.history.length > 4) {
+            <div class="faint" style="font-size: 12px">
+              +{{ d.history.length - 4 }} earlier purchases
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom: 8px">Price</div>
+        @if (d.priceStats; as stats) {
+          <div class="hstack" style="gap: 16px; margin-bottom: 10px">
+            <div>
+              <div class="stat-mini-label">Lowest</div>
+              <div class="stat-mini tnum" style="color: var(--accent)">
+                {{ money(stats.lowest) }}
+              </div>
+            </div>
+            <div>
+              <div class="stat-mini-label">Average</div>
+              <div class="stat-mini tnum">{{ money(stats.average) }}</div>
+            </div>
+            <div>
+              <div class="stat-mini-label">Highest</div>
+              <div class="stat-mini tnum">{{ money(stats.highest) }}</div>
+            </div>
+          </div>
+          <div class="stack" style="gap: 5px; font-size: 12.5px">
+            @for (row of stats.byStore; track row.storeId) {
+              <div class="hstack">
+                <span style="flex: 1">{{ row.storeName }}</span>
+                <span class="sub tnum">{{ money(row.price) }}</span>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="faint" style="font-size: 13px">
+            No prices recorded yet — add a price when you buy this next.
+          </div>
+        }
+      </div>
+
+      @if (detailRows().length) {
+        <div class="card">
+          <div class="hstack" style="align-items: baseline; margin-bottom: 8px">
+            <span class="card-title">Product details</span>
+            <button
+              type="button"
+              class="link-accent spacer"
+              style="font-size: 12px; text-align: right"
+              (click)="editOpen.set(true)"
+            >
+              Edit
+            </button>
+          </div>
+          <div class="stack" style="gap: 6px; font-size: 13px">
+            @for (row of detailRows(); track row.k) {
+              <div class="hstack" style="gap: 10px">
+                <span class="sub" style="width: 110px; flex: none">{{ row.k }}</span>
+                <span>{{ row.v }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      @if (nutritionRows().length) {
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 8px">Nutrition</div>
+          <div class="nutrition-grid nutrition-head" [class.has-serving]="d.nutrition?.perServing">
+            <span></span>
+            <span>{{ nutritionBasisLabel() }}</span>
+            @if (d.nutrition?.perServing) {
+              <span>{{ nutritionServingLabel() }}</span>
+            }
+          </div>
+          <div class="stack" style="gap: 6px; font-size: 13px">
+            @for (row of nutritionRows(); track row.k) {
+              <div class="nutrition-grid" [class.has-serving]="d.nutrition?.perServing">
+                <span class="sub">{{ row.k }}</span>
+                <span class="tnum">{{ row.basis }}</span>
+                @if (d.nutrition?.perServing) {
+                  <span class="tnum">{{ row.serving || '—' }}</span>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  @if (editingUnit(); as unit) {
+    <app-edit-unit
+      [unit]="unit"
+      [productName]="displayName()"
+      [barcode]="d.barcode"
+      (closed)="editingUnit.set(null)"
+      (saved)="refresh()"
+    />
+  }
+  @if (policyOpen()) {
+    <app-restock-policy
+      [barcode]="d.barcode"
+      [productName]="displayName()"
+      [policy]="d.policy"
+      [stockGroup]="d.stockGroup"
+      (closed)="policyOpen.set(false)"
+      (saved)="refresh()"
+    />
+  }
+  @if (bulkOpen()) {
+    <app-bulk-edit
+      [itemIds]="selectedIds()"
+      [unitCount]="selectedIds().length"
+      (closed)="bulkOpen.set(false)"
+      (saved)="clearSelection(); refresh()"
+    />
+  }
+  @if (editOpen()) {
+    <app-product-edit [product]="d" (closed)="editOpen.set(false)" (saved)="refresh()" />
+  }
+  @if (brandsOpen()) {
+    <app-brand-picker
+      [barcode]="d.barcode"
+      [current]="d.brands"
+      [currentPrimary]="d.brandRef?.id ?? null"
+      (closed)="brandsOpen.set(false)"
+      (saved)="refresh()"
+    />
+  }
+}

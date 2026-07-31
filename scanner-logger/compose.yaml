@@ -1,0 +1,24 @@
+services:
+  scanner-logger:
+    build: .
+    container_name: larder-scanner-logger
+    restart: unless-stopped
+    environment:
+      SCANNER_CODE: ${SCANNER_CODE:-SCN01}
+      SCANNER_DEVICE: ${SCANNER_DEVICE:-}
+      SCANNER_GRAB: ${SCANNER_GRAB:-true}
+      DISCOVERY_INTERVAL_SECONDS: ${DISCOVERY_INTERVAL_SECONDS:-5}
+      LARDER_SCAN_API_URL: ${LARDER_SCAN_API_URL:-}
+      LARDER_SCAN_API_TOKEN: ${LARDER_SCAN_API_TOKEN:-}
+      LARDER_OUTBOX_PATH: /var/lib/larder-scanner/outbox.sqlite3
+    volumes:
+      - /dev/input:/dev/input
+      - larder-scanner-outbox:/var/lib/larder-scanner
+    device_cgroup_rules:
+      - "c 13:* rw"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  larder-scanner-outbox:

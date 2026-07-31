@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.venv/
+.venv-win/
+.pnpm-store/
+.terraform/
+*.tfstate
+*.tfstate.*
+__pycache__/
+*.py[cod]
+scanner-logger/*.sqlite3*
+node_modules/
+.angular/
+apps/web/dist/

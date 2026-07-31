@@ -1,0 +1,140 @@
+@if (data(); as d) {
+  <div class="stack ov-page" style="gap: 18px">
+    <div class="grid-cards">
+      <ui-metric-card
+        label="In stock"
+        [value]="d.metrics.unitsInStock"
+        [note]="d.metrics.stockedProducts + ' products'"
+        (pressed)="go('/inventory')"
+      />
+      <ui-metric-card
+        label="Expiring soon"
+        [value]="d.metrics.expiringUnits"
+        [note]="d.metrics.expiredUnits + ' already expired'"
+        tone="var(--danger)"
+        (pressed)="go('/inventory?filter=expiring')"
+      />
+      <ui-metric-card
+        label="Shopping list"
+        [value]="d.metrics.groceryCount"
+        [note]="'est. ' + money(d.metrics.groceryEstimate)"
+        (pressed)="go('/shopping')"
+      />
+      <ui-metric-card
+        label="Needs attention"
+        [value]="d.metrics.attentionCount"
+        [note]="d.metrics.awaitingIdentification + ' awaiting ID'"
+        tone="var(--warn)"
+        (pressed)="go('/inventory?filter=needs')"
+      />
+    </div>
+
+    <div class="ov-columns">
+      <div class="card ov-expiring">
+        <div class="hstack" style="align-items: baseline; margin-bottom: 4px">
+          <span class="card-title">Expiring soon</span>
+          <span class="faint" style="font-size: 11.5px">window · {{ d.windowDays }} days</span>
+          <button
+            type="button"
+            class="link-accent spacer"
+            (click)="go('/inventory?filter=expiring')"
+          >
+            View all →
+          </button>
+        </div>
+        <div class="stack ov-expiring-list" style="gap: 0">
+          @for (item of d.expiring; track item.barcode) {
+            <ui-row (click)="go('/inventory/' + item.barcode)">
+              <ui-row-main>
+                <div class="row-title">
+                  {{ item.name }}
+                  @if (item.kind === 'estimated') {
+                    <span class="est-tag">EST</span>
+                  }
+                </div>
+                <div class="row-meta">{{ expMeta(item) }}</div>
+              </ui-row-main>
+              <ui-rail [width]="112">
+                <ui-expiry-pill
+                  [date]="item.date"
+                  [daysLeft]="item.daysLeft"
+                  [windowDays]="d.windowDays"
+                />
+              </ui-rail>
+            </ui-row>
+          } @empty {
+            <div class="faint" style="padding: 20px 0; font-size: 13px">
+              Nothing expiring inside the window — enjoy the calm.
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="stack ov-side" style="gap: 16px">
+        <div class="card">
+          <div class="card-title" style="margin-bottom: 10px">Needs attention</div>
+          <div class="stack" style="gap: 4px; font-size: 13px">
+            @for (row of attentionRows(); track row.label) {
+              <div class="attn-row row-hover" (click)="go(row.link)">
+                <span class="attn-dot" [style.background]="row.tone"></span>
+                <span style="flex: 1">{{ row.label }}</span>
+                <span style="font-weight: 600">{{ row.count }}</span>
+                <span class="faint">›</span>
+              </div>
+            } @empty {
+              <div class="faint" style="font-size: 13px">All clear.</div>
+            }
+          </div>
+        </div>
+        <div class="card ov-recent">
+          <div class="hstack" style="align-items: baseline; margin-bottom: 10px">
+            <span class="card-title">Recent activity</span>
+            <button type="button" class="link-accent spacer" (click)="go('/activity')">
+              Full log →
+            </button>
+          </div>
+          <div class="stack ov-recent-list" style="gap: 10px; font-size: 13px">
+            @for (event of recent(); track event.at) {
+              <div class="act-row">
+                <span class="act-op" [style.color]="kindLabels[event.kind]?.[1] || 'var(--sub)'">{{
+                  kindLabels[event.kind]?.[0] || event.kind
+                }}</span>
+                @if (event.barcode) {
+                  <a class="act-product act-link" [routerLink]="['/inventory', event.barcode]">{{
+                    event.product
+                  }}</a>
+                } @else {
+                  <span class="act-product">{{ event.product }}</span>
+                }
+                <span class="faint" style="font-size: 11.5px">{{ relative(event.at) }}</span>
+              </div>
+            } @empty {
+              <div class="faint">No activity yet.</div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="banner-deep grocery-banner" (click)="go('/shopping')">
+      <div>
+        <div style="font-size: 15px; font-weight: 600">Shopping list is ready</div>
+        <div style="font-size: 12px; opacity: 0.65">
+          {{ d.groceryPreview.totalCount }} items · est.
+          {{ money(d.groceryPreview.estimate) }} unchecked
+        </div>
+      </div>
+      <div class="banner-chips">
+        @for (item of d.groceryPreview.items; track item.name) {
+          <span class="banner-chip">{{ groceryPreviewLabel(item) }}</span>
+        }
+        @if (d.groceryPreview.moreCount) {
+          <span style="font-size: 12.5px; opacity: 0.6; padding: 6px 4px"
+            >+{{ d.groceryPreview.moreCount }} more</span
+          >
+        }
+      </div>
+      <button type="button" class="btn btn-deep">Open list →</button>
+    </div>
+  </div>
+}

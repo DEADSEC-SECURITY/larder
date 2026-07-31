@@ -1,0 +1,73 @@
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 0;
+}
+
+.setting-row > .select {
+  width: 88px;
+}
+
+.timing-card {
+  gap: 12px;
+}
+
+.timing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  column-gap: 24px;
+}
+
+.timing-row {
+  min-width: 0;
+}
+
+.timing-title,
+.timing-desc {
+  display: block;
+}
+
+.timing-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.timing-desc {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.timing-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.timing-input .select {
+  width: 88px;
+}
+
+.timing-input .faint {
+  width: 30px;
+}
+
+@media (max-width: 520px) {
+  .timing-row {
+    align-items: flex-start;
+  }
+
+  .timing-input {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+}

@@ -1,0 +1,24 @@
+services:
+  printer-bridge:
+    build: .
+    container_name: larder-printer-bridge
+    restart: unless-stopped
+    environment:
+      LARDER_API_BASE_URL: ${LARDER_API_BASE_URL:-http://host.docker.internal:8080}
+      LARDER_SCAN_API_TOKEN: ${LARDER_SCAN_API_TOKEN:?scanner API token is required}
+      PRINTER_BRIDGE_ID: ${PRINTER_BRIDGE_ID:-larder-printer-1}
+      PRINTER_DEVICE: ${PRINTER_DEVICE:-/dev/usb/lp1}
+      PRINTER_LEDGER_PATH: /var/lib/larder-printer/printed.sqlite3
+      PRINTER_POLL_SECONDS: ${PRINTER_POLL_SECONDS:-1}
+      PRINTER_RETRY_SECONDS: ${PRINTER_RETRY_SECONDS:-5}
+    devices:
+      - ${PRINTER_DEVICE:-/dev/usb/lp1}:${PRINTER_DEVICE:-/dev/usb/lp1}
+    volumes:
+      - larder-printer-ledger:/var/lib/larder-printer
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  larder-printer-ledger:
+    name: larder-printer-ledger

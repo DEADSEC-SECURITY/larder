@@ -1,0 +1,250 @@
+@if (!layout.isMobile()) {
+  <header class="topbar">
+    <a routerLink="/" class="logo">
+      <span class="wordmark display">Larder</span>
+      <span class="dot"></span>
+    </a>
+    <nav class="mainnav">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }"
+        >Overview</a
+      >
+      <a routerLink="/inventory" routerLinkActive="active"
+        >Inventory
+        @if (expiringBadge()) {
+          <span class="nav-badge">{{ expiringBadge() }}</span>
+        }
+      </a>
+      <a routerLink="/shopping" routerLinkActive="active"
+        >Shopping
+        @if (groceryBadge()) {
+          <span class="nav-badge">{{ groceryBadge() }}</span>
+        }
+      </a>
+      <span class="nav-sep"></span>
+      @for (item of iconNav; track item.path) {
+        <a
+          class="icon-link"
+          [routerLink]="'/' + item.path"
+          routerLinkActive="active"
+          [title]="item.label"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="17"
+            height="17"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path [attr.d]="item.d"></path>
+          </svg>
+        </a>
+      }
+    </nav>
+    <div class="topbar-right">
+      <div class="clock">
+        <div class="clock-time">
+          {{ time12() }} <span class="clock-ampm">{{ ampm() }}</span>
+        </div>
+        <div class="clock-date">{{ dateLong() }}</div>
+      </div>
+      @if (chipScanner(); as scanner) {
+        <button type="button" class="scan-chip" (click)="state.drawerOpen.set(true)">
+          <span
+            class="scan-dot"
+            [class.mode-add]="scanner.mode === 'ADD'"
+            [class.mode-list]="scanner.mode === 'LIST'"
+            [class.mode-remove]="scanner.mode === 'REMOVE'"
+            [class.mode-trash]="scanner.mode === 'TRASH'"
+            [class.idle]="!scanner.mode"
+          ></span>
+          <span class="scan-label">{{ scanner.name }} · {{ chipMode() }}</span>
+          <span class="scan-count tnum">{{ chipCountdown() }}</span>
+        </button>
+      } @else {
+        <button type="button" class="scan-chip" (click)="state.drawerOpen.set(true)">
+          <span class="scan-dot idle"></span>
+          <span class="scan-label">Scanners</span>
+        </button>
+      }
+      <button type="button" class="btn btn-primary" (click)="state.quickAddOpen.set(true)">
+        + Quick add
+      </button>
+    </div>
+  </header>
+} @else {
+  <header class="topbar mobile">
+    <a routerLink="/" class="logo">
+      <span class="wordmark display" style="font-size: 22px">Larder</span>
+      <span class="dot small"></span>
+    </a>
+    <div class="topbar-right">
+      <span class="clock-time" style="font-size: 14px"
+        >{{ time12() }} <span class="clock-ampm">{{ ampm() }}</span></span
+      >
+      <button type="button" class="scan-chip" (click)="state.drawerOpen.set(true)">
+        <span
+          class="scan-dot"
+          [class.mode-add]="chipScanner()?.mode === 'ADD'"
+          [class.mode-list]="chipScanner()?.mode === 'LIST'"
+          [class.mode-remove]="chipScanner()?.mode === 'REMOVE'"
+          [class.mode-trash]="chipScanner()?.mode === 'TRASH'"
+          [class.idle]="!chipScanner()?.mode"
+        ></span>
+        <span class="scan-count tnum">{{ chipCountdown() }}</span>
+      </button>
+    </div>
+  </header>
+}
+
+<main class="page">
+  <router-outlet />
+  @if (layout.isMobile()) {
+    <div class="bottomnav-spacer"></div>
+  }
+</main>
+
+@if (layout.isMobile()) {
+  <nav class="bottomnav">
+    <a
+      routerLink="/"
+      routerLinkActive="active"
+      [routerLinkActiveOptions]="{ exact: true }"
+      class="bottom-item"
+    >
+      <span class="bottom-icon">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path [attr.d]="bottomIcons.home"></path>
+        </svg>
+      </span>
+      <span class="bottom-label">Home</span>
+    </a>
+    <a routerLink="/inventory" routerLinkActive="active" class="bottom-item">
+      <span class="bottom-icon">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path [attr.d]="bottomIcons.inventory"></path>
+        </svg>
+      </span>
+      <span class="bottom-label">Inventory</span>
+      @if (expiringBadge()) {
+        <span class="bottom-badge">{{ expiringBadge() }}</span>
+      }
+    </a>
+    <button
+      type="button"
+      class="bottom-item plus"
+      aria-label="Quick add"
+      (click)="state.quickAddOpen.set(true)"
+    >
+      <span class="plus-circle">+</span>
+    </button>
+    <a routerLink="/shopping" routerLinkActive="active" class="bottom-item">
+      <span class="bottom-icon">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path [attr.d]="bottomIcons.shopping"></path>
+        </svg>
+      </span>
+      <span class="bottom-label">Shopping</span>
+      @if (groceryBadge()) {
+        <span class="bottom-badge">{{ groceryBadge() }}</span>
+      }
+    </a>
+    <button type="button" class="bottom-item" (click)="state.moreOpen.set(true)">
+      <span class="bottom-icon">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path [attr.d]="bottomIcons.more"></path>
+        </svg>
+      </span>
+      <span class="bottom-label">More</span>
+    </button>
+  </nav>
+}
+
+@if (state.moreOpen()) {
+  <div class="sheet-scrim" (click)="state.moreOpen.set(false)"></div>
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    @for (item of iconNav; track item.path) {
+      <button type="button" class="sheet-item row-hover" (click)="openMoreLink(item.path)">
+        {{ item.label }}
+      </button>
+    }
+    @if (auth.required()) {
+      <div class="hstack" style="padding: 15px 10px 2px">
+        <div style="flex: 1; min-width: 0">
+          <div class="row-title">{{ auth.user()?.name || auth.user()?.username || 'Signed in' }}</div>
+          @if (auth.user()?.email) {
+            <div class="row-meta">{{ auth.user()?.email }}</div>
+          }
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" (click)="auth.signOut()">
+          Sign out
+        </button>
+      </div>
+    }
+  </div>
+}
+
+@defer (when state.quickAddOpen()) {
+  @if (state.quickAddOpen()) {
+    <app-quick-add (closed)="state.quickAddOpen.set(false)" />
+  }
+}
+
+@defer (when state.drawerOpen()) {
+  @if (state.drawerOpen()) {
+    <app-scanner-drawer
+      [scanners]="scanners()"
+      (closed)="state.drawerOpen.set(false)"
+      (changed)="loadScanners()"
+    />
+  }
+}
+
+@defer (on idle) {
+  <app-intake-popup />
+}
+
+<ui-toast-stack />

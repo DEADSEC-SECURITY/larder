@@ -1,0 +1,146 @@
+@use '../../../styles/tokens' as *;
+
+.ov-columns {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  grid-template-columns: 1.55fr 1fr;
+
+  @media (max-width: $mobile) {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ≥ tablet the dashboard fits the viewport: page height is pinned and the
+// expiring / recent-activity lists scroll internally instead of the page.
+// (64px topbar + the page's top/bottom padding.)
+@media (min-width: 761px) {
+  .ov-page {
+    height: calc(100dvh - 64px - 2 * clamp(16px, 2.5vw, 28px));
+  }
+
+  .ov-columns {
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  .ov-expiring {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .ov-expiring-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+
+  .ov-side {
+    min-height: 0;
+  }
+
+  .ov-recent {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ov-recent-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+}
+
+// Expiring rows use the shared ui-list primitives.
+.est-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: 2px;
+}
+
+.attn-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  padding: 7px 6px;
+}
+
+.attn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+.act-row {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+}
+
+.act-op {
+  font-weight: 600;
+  width: 76px;
+  flex: none;
+}
+
+.act-product {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.act-link {
+  color: inherit;
+  text-decoration: none;
+
+  &:hover {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+}
+
+.grocery-banner {
+  padding: 18px var(--pad);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.95;
+  }
+}
+
+.banner-chips {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+  min-width: 200px;
+}
+
+.banner-chip {
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+  padding: 6px 13px;
+  white-space: nowrap;
+}

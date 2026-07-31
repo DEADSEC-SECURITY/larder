@@ -1,0 +1,326 @@
+// App shell — header, navigation, mobile chrome.
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 24px;
+  height: 64px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+
+  &.mobile {
+    height: 56px;
+    padding: 0 16px;
+    gap: 10px;
+  }
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  cursor: pointer;
+  color: var(--ink);
+
+  .wordmark {
+    font-style: italic;
+    font-size: 25px;
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+
+    &.small {
+      width: 6px;
+      height: 6px;
+    }
+  }
+}
+
+.mainnav {
+  display: flex;
+  gap: 2px;
+  font-size: 13.5px;
+  font-weight: 500;
+  align-items: center;
+
+  a {
+    padding: 7px 13px;
+    border-radius: 99px;
+    color: var(--sub);
+    white-space: nowrap;
+
+    &:hover {
+      opacity: 0.75;
+    }
+
+    &.active {
+      background: var(--ink);
+      color: var(--card);
+      opacity: 1;
+    }
+  }
+
+  .icon-link {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.nav-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 99px;
+  padding: 1px 7px;
+  margin-left: 6px;
+}
+
+.mainnav a.active .nav-badge {
+  // The active pill is ink-colored (light in dark mode, dark in light mode);
+  // tint the badge with the card color so it contrasts in both themes.
+  background: color-mix(in srgb, var(--card) 22%, transparent);
+  color: inherit;
+}
+
+.nav-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 6px;
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.clock {
+  text-align: right;
+  line-height: 1.15;
+}
+
+.clock-time {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.clock-ampm {
+  font-size: 11px;
+  color: var(--sub);
+}
+
+.clock-date {
+  font-size: 11px;
+  color: var(--sub);
+}
+
+.scan-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 7px 13px 7px 11px;
+  background: var(--card);
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink);
+
+  &:hover {
+    border-color: var(--accent);
+  }
+}
+
+.scan-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  animation: lpulse 1.6s infinite;
+
+  &.mode-add {
+    background: var(--accent);
+  }
+
+  &.mode-list {
+    background: var(--accent);
+  }
+
+  &.mode-remove {
+    background: var(--warn);
+  }
+
+  &.mode-trash {
+    background: var(--danger);
+  }
+
+  &.idle {
+    background: var(--sub);
+    animation: none;
+  }
+}
+
+.scan-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.scan-count {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(16px, 2.5vw, 28px);
+}
+
+// ---------- Mobile bottom navigation ----------
+
+.bottomnav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  // Grow by the home-indicator inset, not into the labels.
+  height: calc(72px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+}
+
+// Keeps content clear of the fixed bar.
+.bottomnav-spacer {
+  height: calc(88px + env(safe-area-inset-bottom));
+}
+
+.bottom-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  height: 72px;
+  position: relative;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--faint);
+
+  // Pill so the active tab reads without colour alone.
+  .bottom-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 26px;
+    border-radius: 99px;
+    box-sizing: border-box;
+  }
+
+  .bottom-label {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  &.active {
+    color: var(--accent);
+
+    .bottom-icon {
+      background: var(--accent-bg);
+    }
+  }
+}
+
+.plus-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(46, 70, 54, 0.3);
+}
+
+.bottom-badge {
+  position: absolute;
+  top: 10px;
+  right: 50%;
+  margin-right: -22px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 1px 5px;
+}
+
+// ---------- Mobile "More" sheet ----------
+
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: 80;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 81;
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  padding: 14px 18px calc(26px + env(safe-area-inset-bottom));
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 0 auto 12px;
+}
+
+.sheet-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 15px 10px;
+  font-size: 15px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  font-family: inherit;
+  color: var(--ink);
+}

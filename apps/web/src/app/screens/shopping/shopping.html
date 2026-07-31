@@ -1,0 +1,278 @@
+<div class="stack">
+  <div class="hstack wrap" style="gap: 10px">
+    <span class="page-title">Shopping</span>
+    <span class="sub" style="font-size: 12.5px"
+      >{{ checkedCount() }} of {{ totalCount() }} checked</span
+    >
+    <div class="spacer hstack wrap" style="gap: 8px">
+      <button type="button" class="chip" [class.active]="grouped()" (click)="grouped.set(!grouped())">
+        {{ grouped() ? 'Grouped by store' : 'Single list' }}
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" (click)="clearChecks()">
+        Clear checks
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" (click)="addOpen.set(true)">
+        + Add item
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" (click)="scanOpen.set(true)">
+        Scan
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" (click)="shopMode.set(true)">
+        Shopping mode
+      </button>
+    </div>
+  </div>
+
+  @if (totalCount()) {
+    <div class="faint" style="font-size: 11.5px; margin-top: -4px">
+      Long-press a row (right-click on desktop) to set its price, quantity, or remove it.
+    </div>
+  }
+
+  @for (group of groups(); track group.store) {
+    <div class="card" style="padding: 10px var(--pad)">
+      <div class="hstack" style="align-items: baseline; padding: 8px 0 4px">
+        <span class="group-title">{{ group.store }}</span>
+        @if (group.subtotal > 0) {
+          <span class="sub tnum spacer" style="font-size: 12.5px"
+            >{{ money(group.subtotal) }} unchecked</span
+          >
+        }
+      </div>
+      @for (item of group.items; track item.barcode) {
+        <ui-row
+          class="shopping-row"
+          (click)="toggle(item)"
+          (contextmenu)="openEditor(item, $event)"
+          (pointerdown)="onPressStart(item, $event)"
+          (pointermove)="onPressMove($event)"
+          (pointerup)="cancelPress()"
+          (pointercancel)="cancelPress()"
+        >
+          <span class="checkbox" [class.checked]="item.checked">{{
+            item.checked ? '✓' : ''
+          }}</span>
+          <ui-row-main>
+            <div
+              class="row-title"
+              [style.text-decoration]="item.checked ? 'line-through' : 'none'"
+              [style.opacity]="item.checked ? 0.45 : 1"
+            >
+              {{ item.name }}
+              <span class="count-chip tnum">×{{ item.quantity }}</span>
+            </div>
+            @if (scopeMeta(item)) {
+              <div class="faint" style="font-size: 11.5px">{{ scopeMeta(item) }}</div>
+            }
+            <div class="faint" style="font-size: 11.5px">
+              {{ item.reason }}
+              @if (kindTag(item)) {
+                <span class="provenance">· {{ kindTag(item) }}</span>
+              }
+              @if (provenance(item)) {
+                <span class="provenance">· {{ provenance(item) }}</span>
+              }
+            </div>
+            @if (item.storeAssignment.warning) {
+              <div class="g-warning">{{ item.storeAssignment.warning }}</div>
+            }
+          </ui-row-main>
+          <select
+            class="select store-select"
+            [class.manual]="item.storeAssignment.source === 'manual'"
+            [ngModel]="storeChoice(item)"
+            (ngModelChange)="setStore(item, $event)"
+            (click)="$event.stopPropagation()"
+            title="Where to buy this"
+          >
+            <option value="auto">Auto</option>
+            @for (store of state.stores(); track store.id) {
+              <option [value]="store.id">{{ store.name }}</option>
+            }
+          </select>
+          <ui-rail [width]="84">
+            <span class="g-price">
+              @if (item.unitPrice != null) {
+                <span class="g-price-total tnum" [class.entered]="item.priceSource === 'entered'">
+                  {{ money(itemTotal(item)) }}
+                </span>
+                @if (item.quantity > 1) {
+                  <span class="g-price-each tnum">{{ money(item.unitPrice) }} each</span>
+                }
+              } @else {
+                <span class="g-price-none">Add price</span>
+              }
+            </span>
+          </ui-rail>
+        </ui-row>
+      }
+    </div>
+  } @empty {
+    <div class="card">
+      <div class="faint" style="padding: 24px; text-align: center; font-size: 13.5px">
+        The shopping list is empty — restock policies fill it automatically.
+      </div>
+    </div>
+  }
+
+  @if (data(); as d) {
+    <div class="est-banner">
+      <span style="font-size: 13.5px; font-weight: 600; color: var(--accent)"
+        >Estimated total · unchecked items</span
+      >
+      <span class="display spacer" style="font-size: 24px; color: var(--accent)">{{
+        money(d.estimatedUncheckedTotal)
+      }}</span>
+    </div>
+    <div class="faint" style="font-size: 11.5px">
+      Estimates use the lowest recorded price per item. Items without a price aren’t
+      included.
+    </div>
+  }
+</div>
+
+@if (shopMode()) {
+  <div class="shop-overlay">
+    <div class="shop-inner">
+      <div class="hstack" style="gap: 12px">
+        <span class="display" style="font-size: 26px">Shopping</span>
+        <span class="sub" style="font-size: 13px"
+          >{{ cartUnits() }} of {{ totalUnits() }} in cart</span
+        >
+        <button type="button" class="btn btn-outline spacer" (click)="finishShopping()">
+          Close
+        </button>
+      </div>
+      <div class="shop-bar">
+        <div class="shop-fill" [style.width.%]="progressPct()"></div>
+      </div>
+      <div class="hstack" style="gap: 8px">
+        <span class="sub" style="font-size: 12.5px">Trip store</span>
+        <select
+          class="select"
+          [ngModel]="tripStoreId()"
+          (ngModelChange)="tripStoreId.set($event)"
+          title="Applies to everything you check out"
+        >
+          <option value="auto">Each item’s own store</option>
+          @for (store of state.stores(); track store.id) {
+            <option [value]="store.id">{{ store.name }}</option>
+          }
+        </select>
+      </div>
+      @for (group of groups(); track group.store) {
+        <div class="stack" style="gap: 2px">
+          <div class="hstack" style="align-items: baseline; padding: 6px 2px">
+            <span class="group-title">{{ group.store }}</span>
+            <span class="sub tnum spacer" style="font-size: 12.5px"
+              >{{ money(group.subtotal) }}</span
+            >
+          </div>
+          @for (item of group.items; track item.barcode) {
+            <div
+              class="shop-row"
+              (click)="toggle(item)"
+              (contextmenu)="openEditor(item, $event)"
+              (pointerdown)="onPressStart(item, $event)"
+              (pointermove)="onPressMove($event)"
+              (pointerup)="cancelPress()"
+              (pointercancel)="cancelPress()"
+            >
+              <span class="checkbox" [class.checked]="item.checked">{{
+                item.checked ? '✓' : ''
+              }}</span>
+              <div style="flex: 1; min-width: 0">
+                <div
+                  class="g-name"
+                  [style.text-decoration]="item.checked ? 'line-through' : 'none'"
+                  [style.opacity]="item.checked ? 0.45 : 1"
+                >
+                  {{ item.name }}
+                </div>
+                @if (scopeMeta(item)) {
+                  <div class="faint" style="font-size: 12px">{{ scopeMeta(item) }}</div>
+                }
+                <div class="faint" style="font-size: 12px">{{ item.reason }}</div>
+              </div>
+              <span class="sub tnum" style="font-size: 13px">
+                @if (item.checkedQuantity > 0 && item.checkedQuantity < item.quantity) {
+                  {{ item.checkedQuantity }}/{{ item.quantity }}
+                } @else {
+                  ×{{ item.quantity }}
+                }
+              </span>
+              <span class="g-price">
+                @if (item.unitPrice != null) {
+                  <span class="g-price-total tnum">{{ money(itemTotal(item)) }}</span>
+                  @if (item.quantity > 1) {
+                    <span class="g-price-each tnum">{{ money(item.unitPrice) }} each</span>
+                  }
+                } @else {
+                  <span class="g-price-none">No price</span>
+                }
+              </span>
+            </div>
+          }
+        </div>
+      }
+      @if (data(); as d) {
+        <div class="cart-banner banner-deep">
+          <span style="font-size: 13.5px; font-weight: 600">In cart so far</span>
+          <span class="display spacer" style="font-size: 24px">{{ money(d.checkedTotal) }}</span>
+        </div>
+      }
+      <div class="shop-spacer"></div>
+    </div>
+
+    <!-- Thumb-reach actions: scan what you pick up, then stock the lot. -->
+    <div class="shop-actions">
+      <button type="button" class="btn btn-outline scan-cta" (click)="scanOpen.set(true)">
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path
+            d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16M7 8v8M10.5 8v8M14 8v8M17 8v8"
+          ></path>
+        </svg>
+        Scan
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary checkout-cta"
+        [disabled]="checkingOut() || cartUnits() === 0"
+        (click)="checkout()"
+      >
+        {{ checkingOut() ? 'Stocking…' : 'Check out ' + cartUnits() }}
+      </button>
+    </div>
+  </div>
+}
+
+@if (scanOpen()) {
+  <ui-barcode-scanner
+    title="Scan into your cart"
+    (detected)="onScanned($event)"
+    (closed)="scanOpen.set(false)"
+  />
+}
+
+@if (editing(); as item) {
+  <app-shopping-item-edit
+    [item]="item"
+    [currency]="data()?.currency"
+    (saved)="refresh()"
+    (closed)="editing.set(null)"
+  />
+}
+
+@if (addOpen()) {
+  <app-shopping-add (closed)="addOpen.set(false)" (saved)="refresh()" />
+}
