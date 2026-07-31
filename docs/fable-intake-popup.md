@@ -64,10 +64,14 @@ The same object is available at `GET /api/v1/web/intake-batches/{id}`.
 ```json
 {
   "storeId": "uuid-or-null",
-  "unitPrice": 4.99,
+  "totalPrice": 49.9,
   "expirationDate": "2026-08-15"
 }
 ```
+
+Send either `unitPrice` or `totalPrice`, never both. `unitPrice` is applied to
+each editable item. `totalPrice` is the combined receipt price for all editable
+items and is split into a per-item price by the API at confirmation time.
 
 Each field has three useful states:
 
@@ -90,7 +94,8 @@ or "Keep defaults", not "Cancel", because it does not undo the scans.
 - Product image, name, brand, and barcode.
 - Large quantity indicator; pulse it when `quantity` increases.
 - Store selector, prefilled from scanner context or routing rules.
-- Unit price input.
+- Price input with **Total** and **Per item** choices. Default to **Total** for
+  multi-item batches and show the calculated per-item price before saving.
 - Expiration date input and a clear "No expiration" choice that sends null.
 - Primary action: "Add {quantity} items" / "Save {quantity} items".
 - Secondary action: "Keep defaults".

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -49,7 +50,8 @@ class IntakeConfirmRequest(BaseModel):
 
     store_id: UUID | None = None
     unit_price: float | None = Field(default=None, ge=0, le=100_000)
-    # True = unitPrice is the final total; the subtotal is backed out of it.
+    total_price: float | None = Field(default=None, ge=0)
+    # True = the entered unit/whole price includes tax; subtotals are backed out.
     price_includes_tax: bool = False
     tax_rate_id: UUID | None = None
     expiration_date: date | None = None
@@ -57,8 +59,11 @@ class IntakeConfirmRequest(BaseModel):
 
     @model_validator(mode="after")
     def price_required_for_tax(self) -> IntakeConfirmRequest:
-        if "tax_rate_id" in self.model_fields_set and "unit_price" not in self.model_fields_set:
-            raise ValueError("unitPrice is required when taxRateId is provided")
+        price_fields = {"unit_price", "total_price"} & self.model_fields_set
+        if len(price_fields) > 1:
+            raise ValueError("send either unitPrice or totalPrice, not both")
+        if "tax_rate_id" in self.model_fields_set and not price_fields:
+            raise ValueError("unitPrice or totalPrice is required when taxRateId is provided")
         return self
 
 
@@ -204,13 +209,23 @@ async def confirm_intake_batch(
         if selected_storage_location is None or not selected_storage_location.active:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "storage location not found")
 
+    price_field_set = "unit_price" in fields or "total_price" in fields
+    entered_unit_price = payload.unit_price
+    if "total_price" in fields and payload.total_price is not None:
+        if not editable:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "the intake batch has no editable units to split a total price across",
+            )
+        entered_unit_price = Decimal(str(payload.total_price)) / len(editable)
+
     breakdown = None
-    if "unit_price" in fields and payload.unit_price is not None:
+    if price_field_set and entered_unit_price is not None:
         selected_rate_id = (
             payload.tax_rate_id if "tax_rate_id" in fields else prefs.default_tax_rate_id
         )
         breakdown = await price_breakdown(
-            session, payload.unit_price, selected_rate_id, tax_included=payload.price_includes_tax
+            session, entered_unit_price, selected_rate_id, tax_included=payload.price_includes_tax
         )
 
     observed_stores: set[UUID] = set()
@@ -252,7 +267,7 @@ async def confirm_intake_batch(
                     reason="intake batch confirmed",
                 )
 
-        if "unit_price" in fields:
+        if price_field_set:
             before_price = item_price_payload(item)
             apply_price(item, breakdown, settings.currency_code)
             if before_price != item_price_payload(item):
@@ -297,7 +312,7 @@ async def confirm_intake_batch(
         if breakdown is not None and item.store_id is not None:
             observed_stores.add(item.store_id)
 
-    if "unit_price" in fields and breakdown is not None:
+    if price_field_set and breakdown is not None:
         for store_id in observed_stores:
             session.add(
                 ProductStoreObservation(

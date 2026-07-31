@@ -206,6 +206,41 @@ async def test_intake_api_lists_and_confirms_all_scanned_units(session_factory, 
 
 
 @pytest.mark.asyncio
+async def test_intake_total_price_is_split_across_all_scanned_units(
+    session_factory, database_url
+):
+    await add_scanner(session_factory)
+    router = service(session_factory, database_url)
+    await router.process(envelope("CMD:MODE:ADD"))
+    scans = [await router.process(envelope(GTIN)) for _ in range(10)]
+    batch_id = scans[-1].intake_batch_id
+
+    app = web_app(session_factory, database_url)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://web-test"
+    ) as client:
+        response = await client.post(
+            f"/v1/web/intake-batches/{batch_id}/confirm",
+            json={"totalPrice": 49.90},
+        )
+
+    assert response.status_code == 200, response.text
+    confirmed = response.json()
+    assert confirmed["quantity"] == 10
+    assert confirmed["editableQuantity"] == 10
+    assert confirmed["unitPrice"] == 4.99
+
+    async with session_factory() as session:
+        items = (
+            await session.scalars(
+                select(InventoryItem).where(InventoryItem.intake_batch_id == batch_id)
+            )
+        ).all()
+        assert len(items) == 10
+        assert all(float(item.price_paid) == 4.99 for item in items)
+
+
+@pytest.mark.asyncio
 async def test_explicit_nulls_clear_defaults_and_dismiss_keeps_inventory(
     session_factory, database_url
 ):

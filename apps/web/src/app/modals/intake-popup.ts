@@ -1,17 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ApiService } from '../core/api.service';
 import { AppStateService } from '../core/app-state.service';
 import { ClockService } from '../core/clock.service';
-import { GENERIC_SCOPE_LABEL } from '../core/format';
+import { GENERIC_SCOPE_LABEL, money } from '../core/format';
 import { ToastService } from '../core/toast.service';
 import { IntakeBatch, IntakeConfirmPayload } from '../core/models';
-import {
-  TaxRateSelectComponent,
-  findTaxRate,
-  taxBreakdownHint,
-} from '../ui/tax-rate-select';
+import { TaxRateSelectComponent, findTaxRate, taxBreakdownHint } from '../ui/tax-rate-select';
 
 /**
  * Scanner intake popup: surfaces the oldest open intake batch so the user can
@@ -106,11 +109,41 @@ import {
           <div class="price-row">
             <div>
               <div class="hstack" style="gap: 6px; margin-bottom: 5px">
-                <span class="field-label" style="margin-bottom: 0">Price</span>
+                <span class="field-label" style="margin-bottom: 0">Price paid</span>
+                <button
+                  type="button"
+                  class="chip chip-sm mode-chip"
+                  [class.active]="priceMode() === 'total'"
+                  [attr.aria-pressed]="priceMode() === 'total'"
+                  (click)="setPriceMode('total')"
+                >
+                  Total
+                </button>
+                <button
+                  type="button"
+                  class="chip chip-sm mode-chip"
+                  [class.active]="priceMode() === 'unit'"
+                  [attr.aria-pressed]="priceMode() === 'unit'"
+                  (click)="setPriceMode('unit')"
+                >
+                  Per item
+                </button>
+              </div>
+              <input
+                class="input input-on-bg"
+                [placeholder]="priceMode() === 'total' ? '$0.00 for all items' : '$0.00 per item'"
+                [ngModel]="price()"
+                (ngModelChange)="touchPrice($event)"
+              />
+            </div>
+            <div>
+              <div class="hstack" style="gap: 6px; margin-bottom: 5px">
+                <span class="field-label" style="margin-bottom: 0">Tax rate</span>
                 <button
                   type="button"
                   class="chip chip-sm mode-chip"
                   [class.active]="!taxIncluded()"
+                  [attr.aria-pressed]="!taxIncluded()"
                   (click)="setTaxIncluded(false)"
                 >
                   + tax
@@ -119,27 +152,24 @@ import {
                   type="button"
                   class="chip chip-sm mode-chip"
                   [class.active]="taxIncluded()"
+                  [attr.aria-pressed]="taxIncluded()"
                   (click)="setTaxIncluded(true)"
                 >
                   Tax incl.
                 </button>
               </div>
-              <input
-                class="input input-on-bg"
-                [placeholder]="taxIncluded() ? '$0.00 incl. tax' : '$0.00 before tax'"
-                [ngModel]="price()"
-                (ngModelChange)="touchPrice($event)"
-              />
-            </div>
-            <div>
-              <div class="field-label">Tax rate</div>
               <ui-tax-rate-select [value]="taxRateId()" (valueChange)="touchTax($event)" />
             </div>
             <div class="field-hint price-row-hint">
-              @if (taxPreview(); as preview) {
+              @if (priceConversion(); as conversion) {
+                <b>{{ conversion }}</b>
+                @if (taxPreview(); as preview) {
+                  · {{ preview }}
+                }
+              } @else if (taxPreview(); as preview) {
                 {{ preview }}
               } @else {
-                Per unit, applied to every item.
+                Enter the receipt total or the price of one item.
               }
             </div>
           </div>
@@ -177,11 +207,22 @@ import {
                 Auto-saves in <span class="tnum">{{ secs }}s</span>
               </span>
             }
-            <button type="button" class="btn btn-outline" [disabled]="busy()" (click)="dismiss(batch)">
+            <button
+              type="button"
+              class="btn btn-outline"
+              [disabled]="busy()"
+              (click)="dismiss(batch)"
+            >
               Keep defaults
             </button>
-            <button type="button" class="btn btn-primary" [disabled]="busy()" (click)="confirm(batch)">
-              Save {{ batch.editableQuantity }} {{ batch.editableQuantity === 1 ? 'item' : 'items' }}
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="busy()"
+              (click)="confirm(batch)"
+            >
+              Save {{ batch.editableQuantity }}
+              {{ batch.editableQuantity === 1 ? 'item' : 'items' }}
             </button>
           </div>
         </div>
@@ -444,6 +485,7 @@ export class IntakePopup {
   readonly storeId = signal<string | null>(null);
   readonly storageLocationId = signal<string | null>(null);
   readonly price = signal('');
+  readonly priceMode = signal<'total' | 'unit'>('total');
   readonly taxIncluded = signal(false);
   readonly taxRateId = signal<string | null>(null);
   readonly expiration = signal('');
@@ -451,17 +493,32 @@ export class IntakePopup {
   storeTouched = false;
   storageTouched = false;
   priceTouched = false;
+  priceModeTouched = false;
   taxTouched = false;
   expirationTouched = false;
 
-  /** Live subtotal + tax = total line for the entered price and selected rate. */
-  readonly taxPreview = computed(() => {
-    const subtotal = parseFloat(this.price().replace('$', '').trim());
-    const rate = findTaxRate(this.state.taxLocations(), this.taxRateId());
-    if (isNaN(subtotal) || !rate) {
+  /** Shows how the entered amount maps across all editable items. */
+  readonly priceConversion = computed(() => {
+    const value = this.enteredPrice();
+    const count = this.current()?.editableQuantity ?? 0;
+    if (value == null || value < 0 || count <= 0) {
       return '';
     }
-    return taxBreakdownHint(subtotal, rate, this.taxIncluded());
+    const currency = this.current()?.currency ?? 'USD';
+    if (this.priceMode() === 'total') {
+      return `= ${money(value / count, currency)} per item`;
+    }
+    return `= ${money(value * count, currency)} total for ${count} item${count === 1 ? '' : 's'}`;
+  });
+
+  /** Live per-item subtotal + tax = total line for the selected rate. */
+  readonly taxPreview = computed(() => {
+    const subtotal = this.unitPrice();
+    const rate = findTaxRate(this.state.taxLocations(), this.taxRateId());
+    if (subtotal == null || !rate) {
+      return '';
+    }
+    return `Per item: ${taxBreakdownHint(subtotal, rate, this.taxIncluded())}`;
   });
 
   /** Passive membership note ("Counts toward Strawberries · …") — informational
@@ -528,9 +585,7 @@ export class IntakePopup {
   }
 
   private anyTouched(): boolean {
-    return (
-      this.storeTouched || this.storageTouched || this.priceTouched || this.expirationTouched
-    );
+    return this.storeTouched || this.storageTouched || this.priceTouched || this.expirationTouched;
   }
 
   /** Confirm a batch the user was editing that got displaced by a new scan. */
@@ -596,10 +651,12 @@ export class IntakePopup {
         this.taxTouched =
         this.expirationTouched =
           false;
+      this.priceModeTouched = false;
       this.noExpiration.set(false);
       this.storeId.set(batch.storeId);
       this.storageLocationId.set(batch.storageLocationId);
-      this.price.set(batch.unitPrice != null ? batch.unitPrice.toFixed(2) : '');
+      this.priceMode.set(batch.editableQuantity > 1 ? 'total' : 'unit');
+      this.price.set(this.displayPrice(batch));
       this.taxIncluded.set(false);
       this.taxRateId.set(this.defaultTaxRateId(batch));
       this.expiration.set(batch.expirationDate ?? '');
@@ -609,6 +666,9 @@ export class IntakePopup {
       this.pulse();
       // Still scanning this product — hold the popup open.
       this.startIdle();
+      if (!this.priceTouched && !this.priceModeTouched && batch.editableQuantity > 1) {
+        this.priceMode.set('total');
+      }
     }
     this.shownQuantity = batch.quantity;
     // Late enrichment/routing may fill fields the user hasn't edited yet.
@@ -619,7 +679,7 @@ export class IntakePopup {
       this.storageLocationId.set(batch.storageLocationId);
     }
     if (!this.priceTouched) {
-      this.price.set(batch.unitPrice != null ? batch.unitPrice.toFixed(2) : '');
+      this.price.set(this.displayPrice(batch));
     }
     if (!this.taxTouched) {
       this.taxRateId.set(this.defaultTaxRateId(batch));
@@ -627,6 +687,31 @@ export class IntakePopup {
     if (!this.expirationTouched && !this.noExpiration()) {
       this.expiration.set(batch.expirationDate ?? '');
     }
+  }
+
+  private enteredPrice(): number | null {
+    const value = parseFloat(this.price().replace('$', '').trim());
+    return isNaN(value) ? null : value;
+  }
+
+  /** Per-item price represented by the current input, for previews only. */
+  private unitPrice(): number | null {
+    const value = this.enteredPrice();
+    const count = this.current()?.editableQuantity ?? 0;
+    if (value == null || (this.priceMode() === 'total' && count <= 0)) {
+      return null;
+    }
+    return this.priceMode() === 'total' ? value / count : value;
+  }
+
+  /** Render a stored per-item price in whichever entry mode the form is using. */
+  private displayPrice(batch: IntakeBatch): string {
+    if (batch.unitPrice == null) {
+      return '';
+    }
+    const value =
+      this.priceMode() === 'total' ? batch.unitPrice * batch.editableQuantity : batch.unitPrice;
+    return value.toFixed(2);
   }
 
   private pulse(): void {
@@ -692,6 +777,20 @@ export class IntakePopup {
     this.startIdle();
   }
 
+  setPriceMode(value: 'total' | 'unit'): void {
+    if (this.priceMode() === value) {
+      return;
+    }
+    this.priceMode.set(value);
+    this.priceModeTouched = true;
+    // Reinterpreting an existing amount is itself a price edit. A blank field
+    // can switch modes without turning into an explicit price clear.
+    if (this.enteredPrice() != null) {
+      this.priceTouched = true;
+    }
+    this.startIdle();
+  }
+
   setTaxIncluded(value: boolean): void {
     if (this.taxIncluded() !== value) {
       this.taxIncluded.set(value);
@@ -733,19 +832,18 @@ export class IntakePopup {
     if (this.storageTouched) {
       payload.storageLocationId = this.storageLocationId();
     }
+    let enteredPrice: number | null | undefined;
     if (this.priceTouched) {
-      const parsed = parseFloat(this.price().replace('$', '').trim());
-      payload.unitPrice = isNaN(parsed) ? null : parsed;
+      enteredPrice = this.assignEnteredPrice(payload);
     }
     if (this.taxTouched) {
       payload.taxRateId = this.taxRateId();
-      // The API requires unitPrice alongside taxRateId.
-      if (payload.unitPrice === undefined) {
-        const parsed = parseFloat(this.price().replace('$', '').trim());
-        payload.unitPrice = isNaN(parsed) ? null : parsed;
+      // The API requires the selected price field alongside taxRateId.
+      if (enteredPrice === undefined) {
+        enteredPrice = this.assignEnteredPrice(payload);
       }
     }
-    if (payload.unitPrice != null) {
+    if (enteredPrice != null) {
       payload.priceIncludesTax = this.taxIncluded();
     }
     if (this.noExpiration()) {
@@ -754,6 +852,17 @@ export class IntakePopup {
       payload.expirationDate = this.expiration();
     }
     return payload;
+  }
+
+  /** Preserve the selected entry mode in the API contract. */
+  private assignEnteredPrice(payload: IntakeConfirmPayload): number | null {
+    const parsed = this.enteredPrice();
+    if (this.priceMode() === 'total') {
+      payload.totalPrice = parsed;
+    } else {
+      payload.unitPrice = parsed;
+    }
+    return parsed;
   }
 
   confirm(batch: IntakeBatch): void {

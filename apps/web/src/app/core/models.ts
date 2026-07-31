@@ -573,11 +573,14 @@ export interface IntakeBatch {
 export interface IntakeConfirmPayload {
   /** Omit a field to retain its scan-time default; send null to clear it. */
   storeId?: string | null;
+  /** Price for one item; mutually exclusive with totalPrice. */
   unitPrice?: number | null;
+  /** Combined price for every editable item; the API splits it per item. */
+  totalPrice?: number | null;
   expirationDate?: string | null;
-  /** Requires unitPrice in the same payload; null = explicit no tax. */
+  /** Requires unitPrice or totalPrice in the same payload; null = explicit no tax. */
   taxRateId?: string | null;
-  /** True = unitPrice is the final total and the subtotal is backed out. */
+  /** True = the entered price includes tax and its subtotal is backed out. */
   priceIncludesTax?: boolean;
   storageLocationId?: string | null;
 }
