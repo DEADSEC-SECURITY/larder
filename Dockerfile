@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
-COPY pyproject.toml alembic.ini ./
+COPY pyproject.toml alembic.ini LICENSE README.md ./
 COPY migrations ./migrations
 COPY src ./src
 RUN pip install --no-cache-dir .
@@ -14,4 +14,3 @@ USER larder
 
 ENTRYPOINT ["larder"]
 CMD ["daemon"]
-
