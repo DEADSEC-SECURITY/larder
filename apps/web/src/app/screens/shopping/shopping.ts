@@ -37,13 +37,7 @@ interface ShoppingGroup {
 @Component({
   selector: 'app-shopping',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    FormsModule,
-    BarcodeScannerComponent,
-    ShoppingAddModal,
-    ShoppingItemEditModal,
-    UI_LIST,
-  ],
+  imports: [FormsModule, BarcodeScannerComponent, ShoppingAddModal, ShoppingItemEditModal, UI_LIST],
   templateUrl: './shopping.html',
   styleUrl: './shopping.scss',
 })
@@ -262,16 +256,17 @@ export class ShoppingScreen {
         preferredStoreId: choice === 'auto' ? null : choice,
       })
       .subscribe(() => {
-        this.toasts.show(
-          choice === 'auto' ? 'Back to automatic assignment' : 'Store set manually',
-        );
+        this.toasts.show(choice === 'auto' ? 'Back to automatic assignment' : 'Store set manually');
         this.refresh();
       });
   }
 
   clearChecks(): void {
-    this.api.clearShoppingChecks().subscribe(() => {
-      this.toasts.show('Checks cleared');
+    this.api.clearShoppingChecks().subscribe((result) => {
+      const noun = result.removed === 1 ? 'item' : 'items';
+      this.toasts.show(
+        result.removed ? `Removed ${result.removed} checked ${noun}` : 'No checked items to clear',
+      );
       this.refresh();
     });
   }

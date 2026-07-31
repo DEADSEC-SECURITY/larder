@@ -146,12 +146,13 @@ async def test_stock_policy_drives_grocery_list(session_factory, database_url):
         assert item["quantity"] == 2  # target 3 - on hand 1
         assert "Below minimum" in item["reason"]
 
-        # Checking the item, then clearing checks.
+        # Checking the item, then clearing completed rows for good.
         checked = (await client.patch(f"/v1/web/grocery/{barcode}", json={"checked": True})).json()
         assert checked["checked"] is True
-        await client.post("/v1/web/grocery/clear-checks")
+        cleared = await client.post("/v1/web/grocery/clear-checks")
+        assert cleared.json()["removed"] == 1
         grocery = (await client.get("/v1/web/grocery")).json()
-        assert grocery["items"][0]["checked"] is False
+        assert grocery["items"] == []
 
         # Removing the policy empties the automatic part.
         await client.put(

@@ -6,8 +6,10 @@ from sqlalchemy import select
 
 from larder.api import create_app
 from larder.config import Settings
+from larder.enrichment.worker import EnrichmentWorker
 from larder.models import GroceryListItem, InventoryItem, Product, StockGroupProduct
-from larder.models.enums import InventoryStatus
+from larder.models.enums import EnrichmentStatus, InventoryStatus
+from larder.schemas.enrichment import FetchDisposition, OffFetchResult
 from larder.services.stock_matching import create_stock_group_from_product
 
 pytestmark = pytest.mark.integration
@@ -58,6 +60,10 @@ async def test_scanning_checks_one_unit_at_a_time(session_factory, database_url)
         assert first.json()["checkedQuantity"] == 1
         assert first.json()["checked"] is False
 
+        # Clearing completed rows must not discard a partially scanned x2 row.
+        partial_clear = await client.post("/v1/web/shopping/clear-checks")
+        assert partial_clear.json()["removed"] == 0
+
         second = await client.post("/v1/web/shopping/scan", json={"barcode": SNACK})
         assert second.json()["checkedQuantity"] == 2
         assert second.json()["checked"] is True
@@ -65,6 +71,44 @@ async def test_scanning_checks_one_unit_at_a_time(session_factory, database_url)
         # A third scan cannot over-check the row.
         third = await client.post("/v1/web/shopping/scan", json={"barcode": SNACK})
         assert third.json()["checkedQuantity"] == 2
+
+        completed_clear = await client.post("/v1/web/shopping/clear-checks")
+        assert completed_clear.json()["removed"] == 1
+        assert (await client.get("/v1/web/shopping")).json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_phone_scan_starts_enrichment_immediately(session_factory, database_url):
+    calls = []
+
+    class ImmediateClient:
+        async def fetch_product(self, barcode):
+            calls.append(barcode)
+            return OffFetchResult(
+                FetchDisposition.FOUND,
+                http_status=200,
+                product={"code": barcode, "product_name": "Instantly Identified Snack"},
+            )
+
+    app = web_app(session_factory, database_url)
+    app.state.enrichment_worker = EnrichmentWorker(
+        session_factory,
+        ImmediateClient(),
+        Settings(database_url=database_url, scan_api_token="test-token"),
+    )
+
+    async with client_for(app) as client:
+        scan = await client.post("/v1/web/shopping/scan", json={"barcode": SNACK})
+        assert scan.status_code == 200, scan.text
+        assert scan.json()["added"] is True
+        assert calls == [SNACK]
+
+        listing = await client.get("/v1/web/shopping")
+        assert listing.json()["items"][0]["name"] == "Instantly Identified Snack"
+
+    async with session_factory() as session:
+        product = await session.get(Product, SNACK)
+        assert product.enrichment_status == EnrichmentStatus.SUCCEEDED
 
 
 @pytest.mark.asyncio
@@ -75,7 +119,8 @@ async def test_scanning_a_compatible_brand_satisfies_a_group_row(session_factory
         for barcode in (MILK_A, MILK_B):
             await client.post("/v1/web/barcodes/resolve", json={"barcode": barcode})
             await client.patch(
-                f"/v1/web/products/{barcode}", json={"name": f"Whole Milk {barcode[-2:]}"}
+                f"/v1/web/products/{barcode}",
+                json={"name": f"Whole Milk {barcode[-2:]}"},
             )
 
         async with session_factory() as session, session.begin():
@@ -130,9 +175,7 @@ async def test_scanning_dairy_milk_does_not_check_an_oat_milk_row(session_factor
 
 
 @pytest.mark.asyncio
-async def test_scanning_an_unlisted_barcode_adds_it_already_checked(
-    session_factory, database_url
-):
+async def test_scanning_an_unlisted_barcode_adds_it_already_checked(session_factory, database_url):
     app = web_app(session_factory, database_url)
     async with client_for(app) as client:
         assert (await items_by_name(client)) == {}
@@ -237,13 +280,17 @@ async def test_checkout_moves_checked_items_into_inventory(session_factory, data
 
         async with session_factory() as session:
             units = (
-                await session.execute(
-                    select(InventoryItem).where(
-                        InventoryItem.product_barcode == SNACK,
-                        InventoryItem.status == InventoryStatus.IN_STOCK,
+                (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.product_barcode == SNACK,
+                            InventoryItem.status == InventoryStatus.IN_STOCK,
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(units) == 2
             assert all(unit.price_paid is not None for unit in units)
 
@@ -259,7 +306,8 @@ async def test_checkout_of_a_group_row_uses_the_scanned_member(session_factory, 
         for barcode in (MILK_A, MILK_B):
             await client.post("/v1/web/barcodes/resolve", json={"barcode": barcode})
             await client.patch(
-                f"/v1/web/products/{barcode}", json={"name": f"Whole Milk {barcode[-2:]}"}
+                f"/v1/web/products/{barcode}",
+                json={"name": f"Whole Milk {barcode[-2:]}"},
             )
 
         async with session_factory() as session, session.begin():
@@ -291,12 +339,16 @@ async def test_checkout_of_a_group_row_uses_the_scanned_member(session_factory, 
         async with session_factory() as session:
             # MILK_B went in the cart, so MILK_B is what lands in inventory.
             stocked = (
-                await session.execute(
-                    select(InventoryItem.product_barcode).where(
-                        InventoryItem.status == InventoryStatus.IN_STOCK
+                (
+                    await session.execute(
+                        select(InventoryItem.product_barcode).where(
+                            InventoryItem.status == InventoryStatus.IN_STOCK
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert stocked == [MILK_B]
 
 
@@ -309,9 +361,7 @@ async def test_a_skipped_row_stays_on_the_list(session_factory, database_url):
     """
     app = web_app(session_factory, database_url)
     async with client_for(app) as client:
-        settings = await client.put(
-            "/v1/web/settings", json={"requireStoreOnManualAdd": True}
-        )
+        settings = await client.put("/v1/web/settings", json={"requireStoreOnManualAdd": True})
         assert settings.status_code == 200, settings.text
 
         await client.post("/v1/web/barcodes/resolve", json={"barcode": SNACK})
@@ -331,18 +381,20 @@ async def test_a_skipped_row_stays_on_the_list(session_factory, database_url):
 
         async with session_factory() as session:
             stocked = (
-                await session.execute(
-                    select(InventoryItem).where(InventoryItem.product_barcode == SNACK)
+                (
+                    await session.execute(
+                        select(InventoryItem).where(InventoryItem.product_barcode == SNACK)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert stocked == []
 
         # Naming the trip's store lets the same cart go through.
         store = await client.post("/v1/web/stores", json={"name": "Corner Shop"})
         assert store.status_code in (200, 201), store.text
-        retry = await client.post(
-            "/v1/web/shopping/checkout", json={"storeId": store.json()["id"]}
-        )
+        retry = await client.post("/v1/web/shopping/checkout", json={"storeId": store.json()["id"]})
         assert retry.status_code == 200, retry.text
         assert retry.json()["added"] == 1
         assert retry.json()["skipped"] == []

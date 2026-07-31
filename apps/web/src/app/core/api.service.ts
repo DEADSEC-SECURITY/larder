@@ -379,8 +379,8 @@ export class ApiService {
     );
   }
 
-  clearShoppingChecks(): Observable<unknown> {
-    return this.http.post(`${BASE}/shopping/clear-checks`, {});
+  clearShoppingChecks(): Observable<{ ok: boolean; removed: number }> {
+    return this.http.post<{ ok: boolean; removed: number }>(`${BASE}/shopping/clear-checks`, {});
   }
 
   categories(): Observable<{ categories: CategoryRow[] }> {

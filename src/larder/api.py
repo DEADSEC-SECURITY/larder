@@ -13,6 +13,8 @@ from sqlalchemy import text
 
 from larder.config import Settings, get_settings
 from larder.db import create_engine, create_session_factory
+from larder.enrichment.factory import build_product_client
+from larder.enrichment.worker import EnrichmentWorker
 from larder.schemas.scans import ScanEnvelope
 from larder.services.command_router import CommandRouter
 from larder.services.printing import claim_print_job, complete_print_job, fail_print_job
@@ -90,6 +92,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = configured
         app.state.session_factory = create_session_factory(engine)
         app.state.router = CommandRouter(app.state.session_factory, configured)
+        product_client = build_product_client(configured)
+        app.state.enrichment_worker = EnrichmentWorker(
+            app.state.session_factory, product_client, configured
+        )
         app.state.broadcaster = ChangeBroadcaster()
         listener = asyncio.create_task(
             listen_for_changes(configured.database_url, app.state.broadcaster)
@@ -98,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         listener.cancel()
         with suppress(asyncio.CancelledError):
             await listener
+        await product_client.aclose()
         await engine.dispose()
 
     application = FastAPI(title="Larder API", version="1", lifespan=lifespan)

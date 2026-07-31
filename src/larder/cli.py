@@ -14,10 +14,9 @@ from larder.config import get_settings
 from larder.daemon import run_daemon
 from larder.db import create_engine, create_session_factory
 from larder.domain.names import standardize_name
+from larder.enrichment.factory import build_product_client
 from larder.enrichment.mapper import category_display_name
 from larder.enrichment.off_client import OpenFoodFactsClient
-from larder.enrichment.provider_chain import ProductProviderChain
-from larder.enrichment.upcitemdb_client import UpcItemDbClient
 from larder.enrichment.worker import EnrichmentWorker
 from larder.logging import configure_logging
 from larder.models import (
@@ -202,20 +201,7 @@ def _off_client(settings):
 
 
 def _product_client(settings):
-    primary = _off_client(settings)
-    fallbacks = []
-    if settings.upcitemdb_enabled:
-        fallbacks.append(
-            UpcItemDbClient(
-                base_url=settings.upcitemdb_base_url,
-                requests_per_minute=settings.upcitemdb_requests_per_minute,
-                connect_timeout=settings.off_connect_timeout_seconds,
-                total_timeout=settings.off_total_timeout_seconds,
-                user_key=settings.upcitemdb_user_key,
-                key_type=settings.upcitemdb_key_type,
-            )
-        )
-    return ProductProviderChain(primary, fallbacks)
+    return build_product_client(settings)
 
 
 @app.command()

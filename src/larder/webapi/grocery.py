@@ -5,10 +5,11 @@ from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import Depends, HTTPException, status
+import structlog
+from fastapi import BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +51,7 @@ from larder.webapi.mutations import QuickAddRequest, quick_add
 from larder.webapi.snapshot import CatalogSnapshot, load_snapshot
 
 router = web_api_router(tags=["grocery"])
+logger = structlog.get_logger(__name__)
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
@@ -60,9 +62,7 @@ AUTO_REASONS = {
 
 
 class GroceryAddRequest(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
     barcode: str | None = None
     stock_group_id: UUID | None = None
     name: str | None = Field(default=None, max_length=200)
@@ -83,9 +83,7 @@ class GroceryAddRequest(BaseModel):
 
 
 class GroceryUpdateRequest(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
     checked: bool | None = None
     quantity: int | None = Field(default=None, ge=0, le=99)
     preferred_store_id: UUID | None = None
@@ -95,9 +93,7 @@ class GroceryUpdateRequest(BaseModel):
 
 
 class ShoppingScanRequest(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
     barcode: str = Field(min_length=1, max_length=64)
     # When nothing on the list matches, register the product and add it as an
     # already-checked row rather than making the shopper remember it.
@@ -105,9 +101,7 @@ class ShoppingScanRequest(BaseModel):
 
 
 class ShoppingCheckoutRequest(BaseModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
     # Blank keeps every row's own resolved store.
     store_id: UUID | None = None
 
@@ -142,6 +136,7 @@ def _demand_reason(
         return f"Out of stock · restock to {policy.target_stock}"
     return f"Below minimum · {on_hand} of {policy.reorder_point}"
 
+
 def _group_store_assignment(
     *,
     member_barcodes: list[str],
@@ -171,12 +166,9 @@ def _group_store_assignment(
     active_rule_assignments = [
         assignment
         for assignment in rule_assignments
-        if assignment.store_id in snapshot.stores
-        and snapshot.stores[assignment.store_id].active
+        if assignment.store_id in snapshot.stores and snapshot.stores[assignment.store_id].active
     ]
-    routed_store_ids = {
-        assignment.store_id for assignment in active_rule_assignments
-    }
+    routed_store_ids = {assignment.store_id for assignment in active_rule_assignments}
     if (
         member_barcodes
         and len(active_rule_assignments) == len(member_barcodes)
@@ -212,9 +204,7 @@ async def grocery_list(session: SessionDep, settings: SettingsDep) -> dict:
     # Rows the shopper deleted stay hidden until their product genuinely drops
     # below the reorder point again (see services.stock_policy).
     product_rows = (
-        await session.scalars(
-            select(GroceryListItem).where(GroceryListItem.dismissed_at.is_(None))
-        )
+        await session.scalars(select(GroceryListItem).where(GroceryListItem.dismissed_at.is_(None)))
     ).all()
     group_rows = (
         await session.execute(
@@ -229,19 +219,23 @@ async def grocery_list(session: SessionDep, settings: SettingsDep) -> dict:
     ).all()
     group_ids = [group.id for _, group, _ in group_rows]
     membership_rows = (
-        await session.execute(
-            select(
-                StockGroupProduct.stock_group_id,
-                StockGroupProduct.product_barcode,
-            ).where(StockGroupProduct.stock_group_id.in_(group_ids))
-        )
-    ).all() if group_ids else []
+        (
+            await session.execute(
+                select(
+                    StockGroupProduct.stock_group_id,
+                    StockGroupProduct.product_barcode,
+                ).where(StockGroupProduct.stock_group_id.in_(group_ids))
+            )
+        ).all()
+        if group_ids
+        else []
+    )
     member_barcodes: dict[UUID, list[str]] = defaultdict(list)
     for group_id, barcode in membership_rows:
         member_barcodes[group_id].append(barcode)
-    routed_barcodes = {
-        row.product_barcode for row in product_rows
-    } | {barcode for _, barcode in membership_rows}
+    routed_barcodes = {row.product_barcode for row in product_rows} | {
+        barcode for _, barcode in membership_rows
+    }
     routing = await load_routing_context(session, routed_barcodes)
 
     items = []
@@ -300,9 +294,7 @@ async def grocery_list(session: SessionDep, settings: SettingsDep) -> dict:
             continue
         barcodes = sorted(member_barcodes[group.id])
         summaries = [
-            snapshot.summaries[barcode]
-            for barcode in barcodes
-            if barcode in snapshot.summaries
+            snapshot.summaries[barcode] for barcode in barcodes if barcode in snapshot.summaries
         ]
         store_prices: dict[UUID, float] = {}
         for summary in summaries:
@@ -356,14 +348,10 @@ async def grocery_list(session: SessionDep, settings: SettingsDep) -> dict:
 
     items.sort(key=lambda item: (item["storeName"] or "\uffff", item["name"] or ""))
     unchecked_total = sum(
-        (item["unitPrice"] or 0) * item["quantity"]
-        for item in items
-        if not item["checked"]
+        (item["unitPrice"] or 0) * item["quantity"] for item in items if not item["checked"]
     )
     checked_total = sum(
-        (item["unitPrice"] or 0) * item["quantity"]
-        for item in items
-        if item["checked"]
+        (item["unitPrice"] or 0) * item["quantity"] for item in items if item["checked"]
     )
     return {
         "items": items,
@@ -379,9 +367,7 @@ async def _add_group_quantity(
     group = await session.get(StockGroup, stock_group_id)
     if group is None or not group.active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "active stock group not found")
-    row = await session.get(
-        StockGroupShoppingItem, stock_group_id, with_for_update=True
-    )
+    row = await session.get(StockGroupShoppingItem, stock_group_id, with_for_update=True)
     if row is None:
         row = StockGroupShoppingItem(
             stock_group_id=stock_group_id,
@@ -399,9 +385,7 @@ async def _add_group_quantity(
 @router.post("/grocery", status_code=status.HTTP_201_CREATED)
 async def add_grocery_item(payload: GroceryAddRequest, session: SessionDep) -> dict:
     if payload.stock_group_id is not None:
-        row = await _add_group_quantity(
-            session, payload.stock_group_id, payload.quantity
-        )
+        row = await _add_group_quantity(session, payload.stock_group_id, payload.quantity)
         await session.flush()
         return {
             "itemType": "stock_group",
@@ -430,14 +414,10 @@ async def add_grocery_item(payload: GroceryAddRequest, session: SessionDep) -> d
 
     await match_product_to_stock_groups(session, product)
     membership = await session.scalar(
-        select(StockGroupProduct).where(
-            StockGroupProduct.product_barcode == product.barcode
-        )
+        select(StockGroupProduct).where(StockGroupProduct.product_barcode == product.barcode)
     )
     if membership is not None:
-        group_row = await _add_group_quantity(
-            session, membership.stock_group_id, payload.quantity
-        )
+        group_row = await _add_group_quantity(session, membership.stock_group_id, payload.quantity)
         await session.flush()
         return {
             "itemType": "stock_group",
@@ -506,9 +486,7 @@ async def update_grocery_item(
     if identifier.startswith("group:"):
         if group_id is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "stock group item not found")
-        group_row = await session.get(
-            StockGroupShoppingItem, group_id, with_for_update=True
-        )
+        group_row = await session.get(StockGroupShoppingItem, group_id, with_for_update=True)
         if group_row is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "stock group item not found")
         total, checked = await _apply_row_update(session, group_row, payload)
@@ -539,22 +517,45 @@ async def update_grocery_item(
         "stockGroupId": None,
         "quantity": total,
         "checked": checked,
-        "preferredStoreId": str(row.preferred_store_id)
-        if row.preferred_store_id
-        else None,
+        "preferredStoreId": str(row.preferred_store_id) if row.preferred_store_id else None,
     }
 
 
 @router.post("/shopping/clear-checks")
 @router.post("/grocery/clear-checks")
 async def clear_checks(session: SessionDep) -> dict:
-    await session.execute(
-        update(GroceryListItem).values(checked_quantity=0, scanned_barcodes=[])
-    )
-    await session.execute(
-        update(StockGroupShoppingItem).values(checked_quantity=0, scanned_barcodes=[])
-    )
-    return {"ok": True}
+    """Remove completed rows while leaving unchecked and partially checked rows alone."""
+    removed = 0
+    for model in (GroceryListItem, StockGroupShoppingItem):
+        rows = (
+            await session.scalars(
+                select(model)
+                .where(
+                    model.checked_quantity > 0,
+                    model.checked_quantity >= model.automatic_quantity + model.manual_quantity,
+                )
+                .with_for_update()
+            )
+        ).all()
+        for row in rows:
+            await _remove_list_row(session, row)
+            removed += 1
+    await session.flush()
+    return {"ok": True, "removed": removed}
+
+
+async def _remove_list_row(
+    session: AsyncSession, row: GroceryListItem | StockGroupShoppingItem
+) -> None:
+    """Delete manual demand and dismiss automatic demand so it cannot pop back in."""
+    row.manual_quantity = 0
+    row.checked_quantity = 0
+    row.unit_price = None
+    row.scanned_barcodes = []
+    if row.automatic_quantity > 0:
+        row.dismissed_at = utcnow()
+    else:
+        await session.delete(row)
 
 
 @router.delete("/shopping/{identifier}")
@@ -567,14 +568,7 @@ async def delete_grocery_item(identifier: str, session: SessionDep) -> dict:
     off the list until the product falls below its reorder point again.
     """
     row = await _load_row(session, identifier, for_update=True)
-    row.manual_quantity = 0
-    row.checked_quantity = 0
-    row.unit_price = None
-    row.scanned_barcodes = []
-    if row.automatic_quantity > 0:
-        row.dismissed_at = utcnow()
-    else:
-        await session.delete(row)
+    await _remove_list_row(session, row)
     await session.flush()
     return {"ok": True, "identifier": identifier}
 
@@ -634,14 +628,20 @@ async def _match_scanned_row(
 
 @router.post("/shopping/scan")
 async def scan_shopping_item(
-    payload: ShoppingScanRequest, session: SessionDep
+    payload: ShoppingScanRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    session: SessionDep,
 ) -> dict:
     """Tick one unit off the list for a barcode scanned at the shelf."""
     raw = payload.barcode.strip()
     if raw.upper().startswith(MANUAL_BARCODE_PREFIX):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"code": "MANUAL_BARCODE", "detail": "manual product ids cannot be scanned"},
+            {
+                "code": "MANUAL_BARCODE",
+                "detail": "manual product ids cannot be scanned",
+            },
         )
     try:
         normalized = normalize_gtin(raw, accept_invalid_check_digit=True)
@@ -666,7 +666,11 @@ async def scan_shopping_item(
             }
         # Unplanned purchase: register the product if new, then put it on the
         # list already in the cart.
-        await _ensure_product(session, barcode, normalized.barcode_format)
+        _, product_created = await _ensure_product(session, barcode, normalized.barcode_format)
+        if product_created:
+            enrichment_worker = getattr(request.app.state, "enrichment_worker", None)
+            if enrichment_worker is not None:
+                background_tasks.add_task(_enrich_scanned_product, enrichment_worker, barcode)
         row = await session.get(GroceryListItem, barcode, with_for_update=True)
         if row is None:
             row = GroceryListItem(
@@ -709,12 +713,26 @@ async def scan_shopping_item(
     }
 
 
-async def _ensure_product(session: AsyncSession, barcode: str, barcode_format: str) -> Product:
+async def _enrich_scanned_product(worker, barcode: str) -> None:
+    """Resolve an unknown phone scan now without delaying its HTTP response."""
+    try:
+        await worker.run_once(barcode=barcode)
+    except Exception as error:  # noqa: BLE001 - the queued retry remains authoritative
+        logger.warning(
+            "shopping_scan_immediate_enrichment_error",
+            barcode=barcode,
+            error=type(error).__name__,
+        )
+
+
+async def _ensure_product(
+    session: AsyncSession, barcode: str, barcode_format: str
+) -> tuple[Product, bool]:
     """Register a scanned barcode the catalogue has never seen, with enrichment queued."""
     product = await session.get(Product, barcode)
     if product is not None:
         product.archived_at = None
-        return product
+        return product, False
     product = Product(
         barcode=barcode,
         barcode_format=barcode_format,
@@ -732,7 +750,7 @@ async def _ensure_product(session: AsyncSession, barcode: str, barcode_format: s
         )
         .on_conflict_do_nothing(index_elements=[EnrichmentJob.product_barcode])
     )
-    return product
+    return product, True
 
 
 @router.post("/shopping/checkout")

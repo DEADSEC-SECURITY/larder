@@ -32,9 +32,7 @@ async def test_stock_group_aggregates_inventory_and_migrates_exact_policy(databa
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
     async with app.router.lifespan_context(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             seed = await client.post(
                 "/v1/web/quick-add",
                 json={
@@ -92,9 +90,7 @@ async def test_stock_group_aggregates_inventory_and_migrates_exact_policy(databa
             assert item["quantity"] == 2
             assert item["inStock"] == 2
 
-            seed_detail = (
-                await client.get(f"/v1/web/products/{seed_barcode}")
-            ).json()
+            seed_detail = (await client.get(f"/v1/web/products/{seed_barcode}")).json()
             assert seed_detail["stockGroup"]["id"] == group_id
             assert seed_detail["stockGroup"]["inStock"] == 2
             assert seed_detail["policy"]["scope"] == "stock_group"
@@ -119,26 +115,21 @@ async def test_stock_group_aggregates_inventory_and_migrates_exact_policy(databa
             )
             assert checked.status_code == 200, checked.text
             assert checked.json()["checked"] is True
-            await client.post("/v1/web/shopping/clear-checks")
-            assert (await client.get("/v1/web/shopping")).json()["items"][0][
-                "checked"
-            ] is False
+            cleared = await client.post("/v1/web/shopping/clear-checks")
+            assert cleared.json()["removed"] == 1
+            assert (await client.get("/v1/web/shopping")).json()["items"] == []
 
             await client.put(
                 f"/v1/web/stock-groups/{group_id}/stock-policy",
                 json={"reorderPoint": 3, "targetStock": 4},
             )
-            before_deactivate = (
-                await client.get(f"/v1/web/products/{seed_barcode}")
-            ).json()
+            before_deactivate = (await client.get(f"/v1/web/products/{seed_barcode}")).json()
             assert before_deactivate["lowStock"] is True
             deactivated = await client.patch(
                 f"/v1/web/stock-groups/{group_id}", json={"active": False}
             )
             assert deactivated.status_code == 200, deactivated.text
-            after_deactivate = (
-                await client.get(f"/v1/web/products/{seed_barcode}")
-            ).json()
+            after_deactivate = (await client.get(f"/v1/web/products/{seed_barcode}")).json()
             assert after_deactivate["stockGroup"]["active"] is False
             assert after_deactivate["policy"] is None
             assert after_deactivate["lowStock"] is False
@@ -149,9 +140,7 @@ async def test_stock_group_aggregates_inventory_and_migrates_exact_policy(databa
 
 
 @pytest.mark.asyncio
-async def test_scanner_list_mode_targets_known_stock_group(
-    session_factory, database_url
-):
+async def test_scanner_list_mode_targets_known_stock_group(session_factory, database_url):
     scanner_id = uuid4()
     async with session_factory() as session, session.begin():
         product = Product(
@@ -207,9 +196,7 @@ async def test_scanner_list_mode_targets_known_stock_group(
 
 
 @pytest.mark.asyncio
-async def test_rejected_candidate_teaches_group_form_exclusion(
-    session_factory, database_url
-):
+async def test_rejected_candidate_teaches_group_form_exclusion(session_factory, database_url):
     seed_barcode = "0000000000101"
     frozen_barcode = "0000000000102"
     async with session_factory() as session, session.begin():
@@ -217,9 +204,7 @@ async def test_rejected_candidate_teaches_group_form_exclusion(
             [
                 FoodCategory(id="en:fruits", display_name="Fruits"),
                 FoodCategory(id="en:berries", display_name="Berries"),
-                FoodCategory(
-                    id="en:frozen-fruits", display_name="Frozen Fruits"
-                ),
+                FoodCategory(id="en:frozen-fruits", display_name="Frozen Fruits"),
             ]
         )
         seed = Product(

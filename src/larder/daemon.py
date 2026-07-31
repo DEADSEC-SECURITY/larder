@@ -9,9 +9,7 @@ import structlog
 
 from larder.config import Settings
 from larder.db import create_engine, create_session_factory
-from larder.enrichment.off_client import OpenFoodFactsClient
-from larder.enrichment.provider_chain import ProductProviderChain
-from larder.enrichment.upcitemdb_client import UpcItemDbClient
+from larder.enrichment.factory import build_product_client
 from larder.enrichment.worker import EnrichmentWorker
 from larder.scanner.serial import SerialScannerSource
 from larder.scanner.supervisor import supervise_reader
@@ -25,27 +23,7 @@ async def run_daemon(settings: Settings) -> None:
     engine = create_engine(settings.database_url)
     sessions = create_session_factory(engine)
     router = CommandRouter(sessions, settings)
-    off_client = OpenFoodFactsClient(
-        base_url=settings.off_base_url,
-        api_version=settings.off_api_version,
-        user_agent=settings.off_user_agent,
-        requests_per_minute=settings.off_requests_per_minute,
-        connect_timeout=settings.off_connect_timeout_seconds,
-        total_timeout=settings.off_total_timeout_seconds,
-    )
-    fallbacks = []
-    if settings.upcitemdb_enabled:
-        fallbacks.append(
-            UpcItemDbClient(
-                base_url=settings.upcitemdb_base_url,
-                requests_per_minute=settings.upcitemdb_requests_per_minute,
-                connect_timeout=settings.off_connect_timeout_seconds,
-                total_timeout=settings.off_total_timeout_seconds,
-                user_key=settings.upcitemdb_user_key,
-                key_type=settings.upcitemdb_key_type,
-            )
-        )
-    product_client = ProductProviderChain(off_client, fallbacks)
+    product_client = build_product_client(settings)
     enrichment = EnrichmentWorker(sessions, product_client, settings)
     queue: asyncio.Queue[ScanEnvelope] = asyncio.Queue(settings.queue_size)
     stop = asyncio.Event()
@@ -78,7 +56,8 @@ async def run_daemon(settings: Settings) -> None:
                             result=outcome.result.value,
                             affected_item_id=str(outcome.item_id) if outcome.item_id else None,
                             latency_ms=round(
-                                (time.monotonic() - envelope.received_monotonic) * 1000, 2
+                                (time.monotonic() - envelope.received_monotonic) * 1000,
+                                2,
                             ),
                             error_code=outcome.error_code,
                         )
@@ -143,7 +122,11 @@ async def run_daemon(settings: Settings) -> None:
     ]
     processor = asyncio.create_task(process_scans(), name="scan-processor")
     enrich_task = asyncio.create_task(enrich_loop(), name="enrichment-worker")
-    log.info("daemon_started", scanners=list(settings.scanners), queue_size=settings.queue_size)
+    log.info(
+        "daemon_started",
+        scanners=list(settings.scanners),
+        queue_size=settings.queue_size,
+    )
     await stop.wait()
     log.info("daemon_stopping", queue_depth=queue.qsize())
     for task in reader_tasks:

@@ -11,6 +11,12 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import {
+  VideoInput,
+  barcodeVideoConstraints,
+  isIOSDevice,
+  preferredBarcodeCamera,
+} from './barcode-camera';
 import { ModalComponent } from './modal';
 
 /** GTIN family plus Code 128, which some store labels use. */
@@ -56,6 +62,26 @@ interface BarcodeDetectorConstructor {
           <button type="button" class="btn btn-outline btn-sm" (click)="start()">Try again</button>
         }
       </div>
+
+      @if (cameras().length > 1) {
+        <label class="camera-picker">
+          <span class="field-label">Camera</span>
+          <select
+            class="select"
+            [ngModel]="selectedCameraId()"
+            (ngModelChange)="selectCamera($event)"
+          >
+            @for (camera of cameras(); track camera.deviceId; let index = $index) {
+              <option [value]="camera.deviceId">
+                {{ camera.label || 'Camera ' + (index + 1) }}
+              </option>
+            }
+          </select>
+          <span class="field-hint"
+            >Use the main rear or 1× camera if the picture looks blurry.</span
+          >
+        </label>
+      }
 
       <div>
         <div class="field-label">Or type the number under the barcode</div>
@@ -119,6 +145,11 @@ interface BarcodeDetectorConstructor {
       padding: 0 24px;
       line-height: 1.5;
     }
+
+    .camera-picker {
+      display: grid;
+      gap: 6px;
+    }
   `,
 })
 export class BarcodeScannerComponent implements OnDestroy {
@@ -131,16 +162,21 @@ export class BarcodeScannerComponent implements OnDestroy {
   readonly manual = signal('');
   readonly torchOn = signal(false);
   readonly torchAvailable = signal(false);
+  readonly cameras = signal<VideoInput[]>([]);
+  readonly selectedCameraId = signal('');
 
   private readonly videoRef = viewChild<ElementRef<HTMLVideoElement>>('video');
   private stream: MediaStream | null = null;
   private zxingControls: { stop(): void } | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private finished = false;
+  private startVersion = 0;
+
+  private static readonly CAMERA_STORAGE_KEY = 'larder.barcode-camera-id';
 
   constructor() {
     effect(() => {
-      if (this.videoRef() && this.status() === 'starting') {
+      if (this.videoRef()) {
         void this.start();
       }
     });
@@ -161,12 +197,13 @@ export class BarcodeScannerComponent implements OnDestroy {
     }
   }
 
-  async start(): Promise<void> {
+  async start(requestedDeviceId: string | null = this.savedCameraId()): Promise<void> {
     const video = this.videoRef()?.nativeElement;
     if (!video || this.finished) {
       return;
     }
-    this.teardown();
+    const version = ++this.startVersion;
+    this.stopCapture();
     this.status.set('starting');
     this.message.set('Starting the camera…');
 
@@ -177,10 +214,9 @@ export class BarcodeScannerComponent implements OnDestroy {
       return;
     }
 
+    let stream: MediaStream;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-      });
+      stream = await this.openCamera(requestedDeviceId);
     } catch (error) {
       const name = (error as DOMException)?.name;
       this.fail(
@@ -193,11 +229,65 @@ export class BarcodeScannerComponent implements OnDestroy {
       return;
     }
 
-    video.srcObject = this.stream;
+    if (version !== this.startVersion) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const cameras = await this.listCameras();
+    if (version !== this.startVersion) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    this.cameras.set(cameras);
+    const currentDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId ?? '';
+    const saved = requestedDeviceId
+      ? cameras.find((camera) => camera.deviceId === requestedDeviceId)
+      : undefined;
+    const preferred =
+      saved ??
+      preferredBarcodeCamera(
+        cameras,
+        currentDeviceId,
+        isIOSDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints),
+      );
+
+    if (preferred && preferred.deviceId !== currentDeviceId) {
+      stream.getTracks().forEach((track) => track.stop());
+      try {
+        stream = await this.openCamera(preferred.deviceId);
+      } catch {
+        // A device can disappear between enumeration and selection. Reopen the
+        // browser's best rear-facing fallback rather than failing the scanner.
+        stream = await this.openCamera(null);
+      }
+    }
+
+    if (version !== this.startVersion) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    this.stream = stream;
+    const activeDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId ?? '';
+    this.selectedCameraId.set(activeDeviceId);
+    if (activeDeviceId) {
+      this.saveCameraId(activeDeviceId);
+    }
+    await this.optimizeFocus(stream.getVideoTracks()[0]);
+    if (version !== this.startVersion) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    video.srcObject = stream;
     try {
       await video.play();
     } catch {
       // Autoplay rejection still leaves usable frames on most browsers.
+    }
+    if (version !== this.startVersion) {
+      return;
     }
     this.status.set('scanning');
     this.message.set('');
@@ -208,7 +298,85 @@ export class BarcodeScannerComponent implements OnDestroy {
     if (native) {
       this.scanWithNativeDetector(native, video);
     } else {
-      await this.scanWithZxing(video);
+      await this.scanWithZxing(video, version);
+    }
+  }
+
+  selectCamera(deviceId: string): void {
+    if (!deviceId || deviceId === this.selectedCameraId()) {
+      return;
+    }
+    this.selectedCameraId.set(deviceId);
+    this.saveCameraId(deviceId);
+    void this.start(deviceId);
+  }
+
+  private async openCamera(deviceId: string | null): Promise<MediaStream> {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: barcodeVideoConstraints(deviceId),
+      });
+    } catch (error) {
+      const name = (error as DOMException)?.name;
+      if (deviceId && (name === 'NotFoundError' || name === 'OverconstrainedError')) {
+        this.saveCameraId(null);
+        return navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: barcodeVideoConstraints(),
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async listCameras(): Promise<VideoInput[]> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+        .filter((device) => device.kind === 'videoinput')
+        .map(({ deviceId, label }) => ({ deviceId, label }));
+    } catch {
+      return [];
+    }
+  }
+
+  private async optimizeFocus(track: MediaStreamTrack | undefined): Promise<void> {
+    if (!track?.getCapabilities || !track.applyConstraints) {
+      return;
+    }
+    const capabilities = track.getCapabilities() as MediaTrackCapabilities & {
+      focusMode?: string[];
+    };
+    if (!capabilities.focusMode?.includes('continuous')) {
+      return;
+    }
+    try {
+      await track.applyConstraints({
+        advanced: [{ focusMode: 'continuous' }],
+      } as unknown as MediaTrackConstraints);
+    } catch {
+      // The high-resolution stream remains useful when focus control is absent.
+    }
+  }
+
+  private savedCameraId(): string | null {
+    try {
+      return localStorage.getItem(BarcodeScannerComponent.CAMERA_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private saveCameraId(deviceId: string | null): void {
+    try {
+      if (deviceId) {
+        localStorage.setItem(BarcodeScannerComponent.CAMERA_STORAGE_KEY, deviceId);
+      } else {
+        localStorage.removeItem(BarcodeScannerComponent.CAMERA_STORAGE_KEY);
+      }
+    } catch {
+      // Private browsing can disable storage; selection still works this time.
     }
   }
 
@@ -234,20 +402,43 @@ export class BarcodeScannerComponent implements OnDestroy {
   }
 
   /** iOS Safari has no BarcodeDetector; pull in ZXing only when needed. */
-  private async scanWithZxing(video: HTMLVideoElement): Promise<void> {
+  private async scanWithZxing(video: HTMLVideoElement, version: number): Promise<void> {
     try {
-      const { BrowserMultiFormatReader } = await import('@zxing/browser');
-      if (this.finished) {
+      const [{ BrowserMultiFormatOneDReader }, { BarcodeFormat, DecodeHintType }] =
+        await Promise.all([import('@zxing/browser'), import('@zxing/library')]);
+      if (this.finished || version !== this.startVersion) {
         return;
       }
-      const reader = new BrowserMultiFormatReader();
-      this.zxingControls = await reader.decodeFromVideoElement(video, (result) => {
+      const hints = new Map([
+        [
+          DecodeHintType.POSSIBLE_FORMATS,
+          [
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.UPC_E,
+            BarcodeFormat.ITF,
+            BarcodeFormat.CODE_128,
+          ],
+        ],
+      ]);
+      const reader = new BrowserMultiFormatOneDReader(hints, {
+        delayBetweenScanAttempts: 80,
+      });
+      const controls = await reader.decodeFromVideoElement(video, (result) => {
         if (result) {
           this.emit(result.getText());
         }
       });
+      if (version !== this.startVersion) {
+        controls.stop();
+        return;
+      }
+      this.zxingControls = controls;
     } catch {
-      this.fail('Scanning is not supported on this browser. Type the number instead.');
+      if (version === this.startVersion) {
+        this.fail('Scanning is not supported on this browser. Type the number instead.');
+      }
     }
   }
 
@@ -292,6 +483,11 @@ export class BarcodeScannerComponent implements OnDestroy {
   }
 
   private teardown(): void {
+    this.startVersion += 1;
+    this.stopCapture();
+  }
+
+  private stopCapture(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;

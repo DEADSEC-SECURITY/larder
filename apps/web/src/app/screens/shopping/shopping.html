@@ -5,11 +5,21 @@
       >{{ checkedCount() }} of {{ totalCount() }} checked</span
     >
     <div class="spacer hstack wrap" style="gap: 8px">
-      <button type="button" class="chip" [class.active]="grouped()" (click)="grouped.set(!grouped())">
+      <button
+        type="button"
+        class="chip"
+        [class.active]="grouped()"
+        (click)="grouped.set(!grouped())"
+      >
         {{ grouped() ? 'Grouped by store' : 'Single list' }}
       </button>
-      <button type="button" class="btn btn-outline btn-sm" (click)="clearChecks()">
-        Clear checks
+      <button
+        type="button"
+        class="btn btn-outline btn-sm"
+        [disabled]="checkedCount() === 0"
+        (click)="clearChecks()"
+      >
+        Clear checked
       </button>
       <button type="button" class="btn btn-outline btn-sm" (click)="addOpen.set(true)">
         + Add item
@@ -49,9 +59,7 @@
           (pointerup)="cancelPress()"
           (pointercancel)="cancelPress()"
         >
-          <span class="checkbox" [class.checked]="item.checked">{{
-            item.checked ? '✓' : ''
-          }}</span>
+          <span class="checkbox" [class.checked]="item.checked">{{ item.checked ? '✓' : '' }}</span>
           <ui-row-main>
             <div
               class="row-title"
@@ -125,8 +133,7 @@
       }}</span>
     </div>
     <div class="faint" style="font-size: 11.5px">
-      Estimates use the lowest recorded price per item. Items without a price aren’t
-      included.
+      Estimates use the lowest recorded price per item. Items without a price aren’t included.
     </div>
   }
 </div>
@@ -164,9 +171,9 @@
         <div class="stack" style="gap: 2px">
           <div class="hstack" style="align-items: baseline; padding: 6px 2px">
             <span class="group-title">{{ group.store }}</span>
-            <span class="sub tnum spacer" style="font-size: 12.5px"
-              >{{ money(group.subtotal) }}</span
-            >
+            <span class="sub tnum spacer" style="font-size: 12.5px">{{
+              money(group.subtotal)
+            }}</span>
           </div>
           @for (item of group.items; track item.barcode) {
             <div
