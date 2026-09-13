@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
@@ -68,6 +69,10 @@ class Settings(BaseSettings):
     oidc_allowed_groups: str = ""
     # Public origin the browser reaches, for example https://larder.example.com
     public_base_url: str = ""
+    # Exact private browser origin allowed to use everyday web operations
+    # without a session. Settings still require OIDC. Never use a suffix match:
+    # a public tunnel's upstream hostname may also end in .internal.
+    internal_base_url: str = ""
     # Defaults to {public_base_url}/api/v1/web/auth/callback — nginx proxies
     # /api/ to the API and strips the prefix. Must match Authentik exactly.
     oidc_redirect_url: str = ""
@@ -83,6 +88,26 @@ class Settings(BaseSettings):
     session_revalidate_seconds: int = Field(default=60 * 60 * 24, ge=60)
     # Allows http:// origins for local testing; production must stay True.
     session_cookie_secure: bool = True
+
+    @field_validator("internal_base_url")
+    @classmethod
+    def validate_internal_base_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value:
+            return ""
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or not (parsed.hostname or "").endswith(".internal")
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.port not in {None, 443}
+        ):
+            raise ValueError("internal_base_url must be one HTTPS .internal origin on port 443")
+        return f"https://{parsed.hostname}"
 
     @field_validator("household_timezone")
     @classmethod
@@ -105,6 +130,12 @@ class Settings(BaseSettings):
         """Fail fast on a half-configured provider rather than at first sign-in."""
         if not self.oidc_enabled:
             return self
+        if self.internal_base_url and not self.public_base_url.strip():
+            raise ValueError("internal access with OIDC requires LARDER_PUBLIC_BASE_URL")
+        if self.internal_base_url and (
+            urlsplit(self.internal_base_url).hostname == urlsplit(self.public_base_url).hostname
+        ):
+            raise ValueError("internal_base_url must differ from public_base_url")
         missing = [
             name
             for name in (

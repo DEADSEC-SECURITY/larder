@@ -13,7 +13,9 @@ unaffected.
 
 | Surface | Protected by |
 | --- | --- |
-| `/v1/web/*` | Authentik session cookie |
+| `/v1/web/*` on the public origin | Authentik session cookie |
+| Everyday web operations on the configured internal origin | Private network access |
+| Internal settings writes, integrations, and maintenance | Authentik session cookie |
 | `/v1/web/auth/*` | nothing — these must be reachable while signed out |
 | `/healthz` | nothing — container health check |
 | `/v1/scans` | `LARDER_SCAN_API_TOKEN` (hardware scanner) |
@@ -21,6 +23,43 @@ unaffected.
 
 The machine endpoints keep their bearer token and are not meant to be published.
 Only the web origin goes through the tunnel.
+
+## Internal access without login
+
+Set `LARDER_INTERNAL_BASE_URL=https://larder.example.internal` alongside the
+existing OIDC settings. Leave it empty to require sign-in on all web origins.
+This is an exact hostname allowlist, not a rule for every `.internal` address.
+Pass this variable through the production Compose environment as well.
+
+On this private origin, inventory, shopping, scan intake, printing, activity,
+and live updates work without login. The reference data these screens need
+(including household preferences) is readable. Settings writes, catalog rules,
+stock policies, integrations, and maintenance require a valid session. Creating
+a store through quick-add also requires sign-in. New API operations require
+authentication unless explicitly added to the internal operation allowlist.
+
+The Settings screen shows **Sign in to change settings** until authenticated.
+The live-update watchdog does not redirect anonymous internal users during a
+connection interruption. `/auth/me` reports `internalAccess` separately from
+`authenticated`; a local guest is never represented as a signed-in user.
+
+Internal sign-in starts on `LARDER_PUBLIC_BASE_URL` and returns to the requested
+page there. This keeps the transaction cookie on the same origin as the
+registered OIDC callback, so no additional Authentik redirect URI is needed.
+
+The reverse proxy is part of this access boundary. Only the private listener
+may forward the internal Host. The public tunnel must use its separate upstream
+route and **overwrite Host with the public hostname**. Larder ignores
+`X-Forwarded-Host` and `Forwarded` when granting internal access. Do not expose
+the API or a catch-all proxy directly to the internet, where a caller could
+supply the private Host. Keep the public tunnel's `.internal` upstream address
+distinct from `LARDER_INTERNAL_BASE_URL`.
+
+Browser writes must have the same Origin as the destination (internal or public)
+and same-origin Fetch Metadata. Verify internal anonymous reads and routine
+writes, anonymous settings rejection, public anonymous rejection (including
+forged forwarded-host headers), and successful authenticated settings writes
+before releasing a proxy or authentication change.
 
 ## Flow
 

@@ -23,6 +23,8 @@ export interface AuthState {
   /** False when the deployment runs without Authentik — nothing is gated. */
   enabled: boolean;
   authenticated: boolean;
+  /** Everyday operations are open on the configured private origin. */
+  internalAccess?: boolean;
   user: AuthUser | null;
   loginUrl: string | null;
 }
@@ -59,6 +61,8 @@ export class AuthService {
   readonly required = computed(() => this.state()?.enabled === true);
   /** Optimistic while unknown, so the shell renders instead of flashing a gate. */
   readonly signedIn = computed(() => this.state()?.authenticated !== false);
+  /** Fail closed for settings until the server has confirmed access. */
+  readonly canChangeSettings = computed(() => this.state()?.authenticated === true);
 
   private redirecting = false;
   private readonly autoRedirect = shouldAutoRedirect(window.location.search);

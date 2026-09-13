@@ -43,10 +43,7 @@ export class LiveService {
       if (this.debounce) {
         clearTimeout(this.debounce);
       }
-      this.debounce = setTimeout(
-        () => this.state.changed(),
-        this.state.liveUpdateDebounceMs(),
-      );
+      this.debounce = setTimeout(() => this.state.changed(), this.state.liveUpdateDebounceMs());
     };
   }
 
@@ -58,7 +55,7 @@ export class LiveService {
     }
     this.lastAuthProbe = now;
     this.auth.refresh().subscribe((state) => {
-      if (state?.enabled && !state.authenticated) {
+      if (state?.enabled && !state.authenticated && !state.internalAccess) {
         this.auth.onUnauthorized();
       }
     });

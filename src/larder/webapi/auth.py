@@ -24,6 +24,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -54,6 +55,49 @@ TRANSACTION_TTL_SECONDS = 600
 DISCOVERY_TTL_SECONDS = 3600
 AUTH_PATH_PREFIX = "/v1/web/auth/"
 LOGIN_PATH = "/v1/web/auth/login"
+
+# Explicit operation allowlist: new API routes remain authenticated by default.
+# Reference data is needed by the shell and inventory forms; modifying that
+# configuration, integrations, stock policies and maintenance stays protected.
+INTERNAL_READ_PATHS = re.compile(
+    r"/v1/web/(?:overview|inventory|products(?:/[^/]+(?:/stock-group-matches|"
+    r"/store-assignment)?)?|shopping|grocery|activity|events|settings|scanners|"
+    r"stores|storage-locations|tax-locations|tax-classes|brands|categories|commands|"
+    r"store-routing-rules|stock-groups(?:/[^/]+)?|intake-batches(?:/[^/]+)?|"
+    r"print-jobs/[^/]+|export/inventory\.csv)"
+)
+INTERNAL_WRITE_PATHS = {
+    "POST": re.compile(
+        r"/v1/web/(?:quick-add|barcodes/resolve|(?:shopping|grocery)"
+        r"(?:/clear-checks|/scan|/checkout)?|intake-batches/[^/]+/(?:confirm|dismiss)|"
+        r"units/(?:bulk|[^/]+/(?:remove|waste|status))|print-jobs|"
+        r"scanners/[^/]+/(?:mode|store)|products/[^/]+/(?:restore|retry-enrichment))"
+    ),
+    "PATCH": re.compile(r"/v1/web/(?:products|units|shopping|grocery)/[^/]+"),
+    "DELETE": re.compile(r"/v1/web/(?:products|shopping|grocery)/[^/]+"),
+}
+
+
+def internal_access(request: Request, settings: Settings) -> bool:
+    """Match only the configured Host, never client-supplied forwarded headers.
+
+    The ingress must route this host only on the private network and overwrite
+    Host with the public hostname on the public tunnel (see the deployment doc).
+    """
+    if not settings.internal_base_url:
+        return False
+    host = (request.headers.get("host") or "").lower()
+    expected = urlsplit(settings.internal_base_url).netloc
+    return host in {expected, f"{expected}:443"}
+
+
+def internal_operation(request: Request) -> bool:
+    pattern = (
+        INTERNAL_READ_PATHS
+        if request.method in {"GET", "HEAD"}
+        else INTERNAL_WRITE_PATHS.get(request.method)
+    )
+    return pattern is not None and pattern.fullmatch(request.url.path) is not None
 
 
 # --------------------------------------------------------------------------
@@ -153,7 +197,11 @@ def _delete_cookie(response: Response, name: str, settings: Settings) -> None:
 
 def _trusted_browser_write(request: Request, settings: Settings) -> bool:
     """Keep SameSite=None from turning session-authenticated writes into CSRF."""
-    configured_url = settings.public_base_url.strip() or settings.oidc_callback_url
+    configured_url = (
+        settings.internal_base_url
+        if internal_access(request, settings)
+        else settings.public_base_url.strip() or settings.oidc_callback_url
+    )
     configured = urlsplit(configured_url)
     expected_origin = f"{configured.scheme}://{configured.netloc}"
     origin = (request.headers.get("origin") or "").rstrip("/")
@@ -203,9 +251,7 @@ async def _fetch_userinfo(
     endpoint = document.get("userinfo_endpoint")
     if not endpoint or not access_token:
         return {}
-    response = await client.get(
-        endpoint, headers={"Authorization": f"Bearer {access_token}"}
-    )
+    response = await client.get(endpoint, headers={"Authorization": f"Bearer {access_token}"})
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, dict) else {}
@@ -310,13 +356,23 @@ async def me(request: Request) -> dict:
     settings = _settings(request)
     if not settings.oidc_enabled:
         # Sign-in is off: report an open door so the SPA gates nothing.
-        return {"enabled": False, "authenticated": True, "user": None, "loginUrl": None}
+        return {
+            "enabled": False,
+            "authenticated": True,
+            "user": None,
+            "loginUrl": None,
+            "internalAccess": internal_access(request, settings),
+        }
 
     user = getattr(request.state, "user", None)
     if user is None:
         factory = request.app.state.session_factory
         async with factory() as db:
             row = await load_session(db, request.cookies.get(SESSION_COOKIE), settings)
+            if row and row.revalidate_after is not None and row.revalidate_after <= _now():
+                if not await revalidate(request.app, db, row, settings):
+                    await db.delete(row)
+                    row = None
             user = row.claims if row else None
             await db.commit()
     return {
@@ -324,6 +380,7 @@ async def me(request: Request) -> dict:
         "authenticated": user is not None,
         "user": user,
         "loginUrl": LOGIN_PATH,
+        "internalAccess": internal_access(request, settings),
     }
 
 
@@ -332,6 +389,13 @@ async def login(request: Request, next_url: str = Query(default="/", alias="next
     settings = _settings(request)
     if not settings.oidc_enabled:
         return JSONResponse({"detail": "sign-in is not configured"}, status_code=404)
+
+    if internal_access(request, settings):
+        # Start the entire handshake on the registered public origin. A
+        # transaction cookie set on .internal cannot reach its public callback.
+        base = settings.public_base_url.strip().rstrip("/")
+        query = urlencode({"next": safe_next(next_url)})
+        return RedirectResponse(f"{base}/api{LOGIN_PATH}?{query}", status_code=302)
 
     try:
         document = await discovery_document(request.app, settings)
@@ -547,12 +611,16 @@ async def list_sessions(request: Request) -> dict:
             await db.commit()
             return {"sessions": []}
         rows = (
-            await db.execute(
-                select(WebSession)
-                .where(WebSession.subject == current.subject)
-                .order_by(WebSession.created_at.desc())
+            (
+                await db.execute(
+                    select(WebSession)
+                    .where(WebSession.subject == current.subject)
+                    .order_by(WebSession.created_at.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         payload = [
             {
                 "id": str(row.id),
@@ -574,7 +642,7 @@ async def list_sessions(request: Request) -> dict:
 
 
 def install_web_auth(application, settings: Settings) -> None:
-    """Require a live session on /v1/web/* when sign-in is enabled."""
+    """Guard public access and internal settings while allowing private daily use."""
 
     unauthorized = {"detail": "authentication required", "loginUrl": LOGIN_PATH}
 
@@ -596,6 +664,21 @@ def install_web_auth(application, settings: Settings) -> None:
         if not path.startswith("/v1/web/") or path.startswith(AUTH_PATH_PREFIX):
             return await call_next(request)
         if request.method == "OPTIONS":
+            return await call_next(request)
+
+        guest_operation = internal_access(request, settings) and internal_operation(request)
+        if guest_operation and path == "/v1/web/quick-add" and request.method == "POST":
+            # Quick-add can also create a store, which is a settings change.
+            # Existing stores remain usable without a session.
+            try:
+                payload = await request.json()
+            except ValueError:
+                payload = None
+            if isinstance(payload, dict) and (
+                payload.get("newStoreName") or payload.get("new_store_name")
+            ):
+                guest_operation = False
+        if guest_operation:
             return await call_next(request)
 
         factory = request.app.state.session_factory

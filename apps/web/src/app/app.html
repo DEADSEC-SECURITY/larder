@@ -214,14 +214,26 @@
     @if (auth.required()) {
       <div class="hstack" style="padding: 15px 10px 2px">
         <div style="flex: 1; min-width: 0">
-          <div class="row-title">{{ auth.user()?.name || auth.user()?.username || 'Signed in' }}</div>
+          <div class="row-title">
+            {{
+              auth.signedIn()
+                ? auth.user()?.name || auth.user()?.username || 'Signed in'
+                : 'Local access'
+            }}
+          </div>
           @if (auth.user()?.email) {
             <div class="row-meta">{{ auth.user()?.email }}</div>
           }
         </div>
-        <button type="button" class="btn btn-outline btn-sm" (click)="auth.signOut()">
-          Sign out
-        </button>
+        @if (auth.signedIn()) {
+          <button type="button" class="btn btn-outline btn-sm" (click)="auth.signOut()">
+            Sign out
+          </button>
+        } @else {
+          <button type="button" class="btn btn-outline btn-sm" (click)="auth.signIn('/settings')">
+            Sign in
+          </button>
+        }
       </div>
     }
   </div>

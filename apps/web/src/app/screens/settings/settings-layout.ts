@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+
+import { AuthService } from '../../core/auth.service';
 
 // Settings hub — side nav (desktop) / chip row (mobile) with each catalog
 // management screen as a child route.
@@ -26,7 +28,15 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
         }
       </nav>
       <div class="settings-content">
-        <router-outlet />
+        @if (auth.canChangeSettings()) {
+          <router-outlet />
+        } @else {
+          <div class="card stack" style="gap: 12px">
+            <div class="card-title">Sign in to change settings</div>
+            <p class="sub">Settings and integrations require a signed-in account.</p>
+            <button type="button" class="btn btn-primary" (click)="auth.signIn()">Sign in</button>
+          </div>
+        }
       </div>
     </div>
   `,
@@ -128,6 +138,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
   `,
 })
 export class SettingsLayout {
+  readonly auth = inject(AuthService);
   readonly sections = [
     {
       label: null,

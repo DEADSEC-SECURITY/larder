@@ -79,6 +79,7 @@ async def test_web_routes_are_open_when_sign_in_is_disabled(session_factory, dat
             "authenticated": True,
             "user": None,
             "loginUrl": None,
+            "internalAccess": False,
         }
 
 
@@ -191,9 +192,7 @@ async def test_cross_site_browser_write_is_rejected(session_factory, database_ur
 
 
 @pytest.mark.asyncio
-async def test_logout_everywhere_drops_every_session_for_the_subject(
-    session_factory, database_url
-):
+async def test_logout_everywhere_drops_every_session_for_the_subject(session_factory, database_url):
     settings = signed_in_settings(database_url)
     app = app_for(session_factory, settings)
     phone = await make_session(session_factory, settings, user_agent="iPhone")
@@ -262,9 +261,7 @@ async def test_login_redirects_to_the_provider_with_pkce(session_factory, databa
         assert "httponly" in set_cookie
 
         # The PKCE verifier and state ride in a signed, short-lived cookie.
-        transaction = read_token(
-            response.cookies["larder_oidc_tx"], settings.session_secret
-        )
+        transaction = read_token(response.cookies["larder_oidc_tx"], settings.session_secret)
         assert transaction["next"] == "/inventory"
         assert transaction["verifier"] and transaction["state"] and transaction["nonce"]
 
@@ -310,3 +307,188 @@ def test_session_cookies_are_tamper_evident():
     assert read_token(None, SECRET) is None
     # An empty secret must never validate anything.
     assert read_token(sign_token({"exp": int(time.time()) + 60}, ""), "") is None
+
+
+INTERNAL_ORIGIN = "https://larder.household.internal"
+
+
+@pytest.mark.asyncio
+async def test_internal_daily_use_without_login(session_factory, database_url):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    app = app_for(session_factory, settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url=INTERNAL_ORIGIN,
+        headers={"Origin": INTERNAL_ORIGIN, "Sec-Fetch-Site": "same-origin"},
+    ) as client:
+        # A stale/forged session must not break local everyday access.
+        client.cookies.set(SESSION_COOKIE, "expired-or-invalid")
+        for path in (
+            "overview",
+            "inventory",
+            "products",
+            "shopping",
+            "grocery",
+            "activity",
+            "settings",
+            "scanners",
+            "stores",
+            "tax-locations",
+            "storage-locations",
+            "brands",
+            "categories",
+            "stock-groups",
+            "intake-batches",
+        ):
+            response = await client.get(f"/v1/web/{path}")
+            assert response.status_code == 200, (path, response.text)
+        me = (await client.get("/v1/web/auth/me")).json()
+        assert me["internalAccess"] is True
+        assert me["authenticated"] is False
+        assert me["enabled"] is True
+        assert me["user"] is None
+
+        added = await client.post("/v1/web/quick-add", json={"name": "Local milk", "quantity": 2})
+        assert added.status_code == 201, added.text
+        shopping = await client.post(
+            "/v1/web/shopping", json={"name": "Local bread", "quantity": 1}
+        )
+        assert shopping.status_code == 201, shopping.text
+
+
+@pytest.mark.asyncio
+async def test_internal_settings_and_maintenance_require_session(session_factory, database_url):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    app = app_for(session_factory, settings)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url=INTERNAL_ORIGIN,
+        headers={"Origin": INTERNAL_ORIGIN, "Sec-Fetch-Site": "same-origin"},
+    ) as client:
+        before = (await client.get("/v1/web/settings")).json()
+        for method, path in (
+            ("PUT", "settings"),
+            ("PUT", "settings/"),
+            ("GET", "integrations"),
+            ("PUT", "integrations/ziptax"),
+            ("POST", "integrations/ziptax/test"),
+            ("POST", "maintenance/reset-inventory"),
+            ("POST", "maintenance/recalculate-estimates"),
+            ("POST", "stores"),
+            ("PATCH", "stores/any"),
+            ("POST", "storage-locations"),
+            ("PATCH", "storage-locations/any"),
+            ("POST", "tax-locations/lookup"),
+            ("PATCH", "tax-rates/any"),
+            ("POST", "brands"),
+            ("PATCH", "categories/local%3Atest"),
+            ("POST", "store-routing-rules"),
+            ("POST", "stock-groups/auto-match"),
+            ("PUT", "stock-groups/any/stock-policy"),
+            ("PUT", "products/any/stock-policy"),
+            ("PUT", "products/any/brands"),
+            ("POST", "future-settings-route"),
+        ):
+            response = await client.request(method, f"/v1/web/{path}")
+            assert response.status_code == 401, (method, path, response.text)
+        for field in ("newStoreName", "new_store_name"):
+            response = await client.post(
+                "/v1/web/quick-add",
+                json={"name": "Milk", field: "Unauthorized store"},
+            )
+            assert response.status_code == 401
+        assert (await client.get("/v1/web/settings")).json() == before
+        assert (await client.get("/v1/web/stores")).json()["stores"] == []
+
+        client.cookies.set(SESSION_COOKIE, await make_session(session_factory, settings))
+        response = await client.put("/v1/web/settings", json={"expiringWindowDays": 7})
+        assert response.status_code == 200, response.text
+        assert response.json()["expiringWindowDays"] == 7
+        assert (await client.get("/v1/web/integrations")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_public_access_cannot_claim_internal_host(session_factory, database_url):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    app = app_for(session_factory, settings)
+    for host in (
+        "larder.example.test",
+        "larder-public-origin.household.internal",
+        "other.household.internal",
+        "larder.household.internal.evil.test",
+        "larder.household.internal:444",
+        "larder.household.internal.",
+    ):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url=f"https://{host}",
+            headers={
+                "X-Forwarded-Host": "larder.household.internal",
+                "Forwarded": 'host="larder.household.internal";proto=https',
+                "Origin": INTERNAL_ORIGIN,
+            },
+        ) as client:
+            assert (await client.get("/v1/web/overview")).status_code == 401, host
+            assert (await client.get("/v1/web/auth/me")).json()["internalAccess"] is False
+
+
+@pytest.mark.asyncio
+async def test_internal_writes_reject_cross_origin_requests(session_factory, database_url):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app_for(session_factory, settings)),
+        base_url=INTERNAL_ORIGIN,
+    ) as client:
+        for headers in (
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"},
+            {"Origin": "https://larder.example.test", "Sec-Fetch-Site": "same-site"},
+            {"Origin": INTERNAL_ORIGIN, "Sec-Fetch-Site": "cross-site"},
+        ):
+            response = await client.post(
+                "/v1/web/quick-add",
+                json={"name": "Forbidden milk"},
+                headers=headers,
+            )
+            assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_internal_sign_in_starts_on_callback_origin(session_factory, database_url):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app_for(session_factory, settings)),
+        base_url=INTERNAL_ORIGIN,
+    ) as client:
+        response = await client.get("/v1/web/auth/login", params={"next": "/settings/integrations"})
+        assert response.status_code == 302
+        assert response.headers["location"] == (
+            "https://larder.example.test/api/v1/web/auth/login?next=%2Fsettings%2Fintegrations"
+        )
+        assert "set-cookie" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_internal_me_revalidates_settings_session(session_factory, database_url, monkeypatch):
+    settings = signed_in_settings(database_url, internal_base_url=INTERNAL_ORIGIN)
+    app = app_for(session_factory, settings)
+    cookie = await make_session(
+        session_factory,
+        settings,
+        refresh_token="revoked",
+        revalidate_after=datetime.now(UTC) - timedelta(seconds=1),
+    )
+
+    async def revoked(*args):
+        return False
+
+    monkeypatch.setattr("larder.webapi.auth.revalidate", revoked)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url=INTERNAL_ORIGIN,
+    ) as client:
+        client.cookies.set(SESSION_COOKIE, cookie)
+        me = (await client.get("/v1/web/auth/me")).json()
+        assert me["internalAccess"] is True
+        assert me["authenticated"] is False
+        assert (await client.get("/v1/web/overview")).status_code == 200
+        assert (await client.put("/v1/web/settings", json={})).status_code == 401
